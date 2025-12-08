@@ -456,6 +456,53 @@ START_TEST(test_dump_map)
 }
 END_TEST
 
+START_TEST(test_map_iterator_five_entries)
+{
+    // Bug reproduction test: iterating over a map with 5+ entries crashes
+    // See: https://github.com/jbboehr/handlebars.c/issues/XXX
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0); // zero triggers rehashes - good for testing
+
+    handlebars_value_integer(tmp, 1);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("a"), tmp);
+
+    handlebars_value_integer(tmp, 2);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("b"), tmp);
+
+    handlebars_value_integer(tmp, 3);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("c"), tmp);
+
+    handlebars_value_integer(tmp, 4);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("d"), tmp);
+
+    handlebars_value_integer(tmp, 5);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("e"), tmp);
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert(!handlebars_value_is_scalar(value));
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 5);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        ck_assert_int_eq(handlebars_value_get_intval(child), i);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 5);
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
@@ -469,6 +516,7 @@ static Suite * suite(void)
     REGISTER_TEST_FIXTURE(s, test_array_iterator, "Array iterator");
     REGISTER_TEST_FIXTURE(s, test_map_iterator, "Map iterator");
     REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse, "Map iterator (sparse)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_five_entries, "Map iterator (five entries)");
     REGISTER_TEST_FIXTURE(s, test_array_find, "Array Find");
     REGISTER_TEST_FIXTURE(s, test_map_find, "Map Find");
     REGISTER_TEST_FIXTURE(s, test_readable_type, "Readable Type");

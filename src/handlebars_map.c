@@ -548,16 +548,16 @@ void handlebars_map_sparse_array_compact(struct handlebars_map * map)
     struct handlebars_map_entry * vec = map_vec(map);
     struct handlebars_map_entry ** table = map_table(map);
 
-    // Scan until the first tombstone
+    // Scan until the first tombstone, counting valid entries
     for (; i < map->vec_offset; i++) {
         if (0 == memcmp(&vec[i], &HANDLEBARS_MAP_TOMBSTONE_V, sizeof(HANDLEBARS_MAP_TOMBSTONE_V))) {
             i++;
-            vec_offset++;
             break;
         }
+        vec_offset++;  // Count valid entries before the tombstone
     }
 
-    // Now patch everything
+    // Now patch everything - move remaining valid entries to fill gaps
     for (; i < map->vec_offset; i++) {
         if (0 != memcmp(&vec[i], &HANDLEBARS_MAP_TOMBSTONE_V, sizeof(HANDLEBARS_MAP_TOMBSTONE_V))) {
             vec[vec_offset] = vec[i];
