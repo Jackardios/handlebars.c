@@ -503,6 +503,391 @@ START_TEST(test_map_iterator_five_entries)
 }
 END_TEST
 
+START_TEST(test_map_iterator_sparse_five_entries)
+{
+    // Test iterating over a sparse map with 5 entries after removing middle element
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+    int sum = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0);
+
+    handlebars_value_integer(tmp, 1);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("a"), tmp);
+
+    handlebars_value_integer(tmp, 2);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("b"), tmp);
+
+    handlebars_value_integer(tmp, 3);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("c"), tmp);
+
+    handlebars_value_integer(tmp, 4);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("d"), tmp);
+
+    handlebars_value_integer(tmp, 5);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("e"), tmp);
+
+    // Remove middle element to create a tombstone
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("c"));
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 4);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        sum += handlebars_value_get_intval(child);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 4);
+    ck_assert_int_eq(sum, 1 + 2 + 4 + 5); // sum without 3
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_sparse_remove_first)
+{
+    // Test iterating after removing the first element
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+    int sum = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0);
+
+    handlebars_value_integer(tmp, 1);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("a"), tmp);
+
+    handlebars_value_integer(tmp, 2);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("b"), tmp);
+
+    handlebars_value_integer(tmp, 3);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("c"), tmp);
+
+    handlebars_value_integer(tmp, 4);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("d"), tmp);
+
+    handlebars_value_integer(tmp, 5);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("e"), tmp);
+
+    // Remove first element
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("a"));
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 4);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        sum += handlebars_value_get_intval(child);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 4);
+    ck_assert_int_eq(sum, 2 + 3 + 4 + 5); // sum without 1
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_sparse_remove_last)
+{
+    // Test iterating after removing the last element
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+    int sum = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0);
+
+    handlebars_value_integer(tmp, 1);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("a"), tmp);
+
+    handlebars_value_integer(tmp, 2);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("b"), tmp);
+
+    handlebars_value_integer(tmp, 3);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("c"), tmp);
+
+    handlebars_value_integer(tmp, 4);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("d"), tmp);
+
+    handlebars_value_integer(tmp, 5);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("e"), tmp);
+
+    // Remove last element
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("e"));
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 4);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        sum += handlebars_value_get_intval(child);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 4);
+    ck_assert_int_eq(sum, 1 + 2 + 3 + 4); // sum without 5
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_sparse_multiple_removes)
+{
+    // Test iterating after removing multiple elements (non-contiguous tombstones)
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+    int sum = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0);
+
+    handlebars_value_integer(tmp, 1);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("a"), tmp);
+
+    handlebars_value_integer(tmp, 2);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("b"), tmp);
+
+    handlebars_value_integer(tmp, 3);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("c"), tmp);
+
+    handlebars_value_integer(tmp, 4);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("d"), tmp);
+
+    handlebars_value_integer(tmp, 5);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("e"), tmp);
+
+    handlebars_value_integer(tmp, 6);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("f"), tmp);
+
+    // Remove multiple elements to create non-contiguous tombstones
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("b"));
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("d"));
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 4);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        sum += handlebars_value_get_intval(child);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 4);
+    ck_assert_int_eq(sum, 1 + 3 + 5 + 6); // sum without 2 and 4
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_sparse_remove_all_but_one)
+{
+    // Test iterating after removing all but one element
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0);
+
+    handlebars_value_integer(tmp, 1);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("a"), tmp);
+
+    handlebars_value_integer(tmp, 2);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("b"), tmp);
+
+    handlebars_value_integer(tmp, 3);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("c"), tmp);
+
+    handlebars_value_integer(tmp, 4);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("d"), tmp);
+
+    handlebars_value_integer(tmp, 5);
+    tmp_map = handlebars_map_str_update(tmp_map, HBS_STRL("e"), tmp);
+
+    // Remove all but middle element
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("a"));
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("b"));
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("d"));
+    tmp_map = handlebars_map_str_remove(tmp_map, HBS_STRL("e"));
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 1);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        ck_assert_hbs_str_eq_cstr(key, "c");
+        ck_assert_int_eq(handlebars_value_get_intval(child), 3);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 1);
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_ten_entries)
+{
+    // Test iterating over a map with 10 entries (exceeds initial capacity)
+    HANDLEBARS_VALUE_DECL(value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * tmp_map;
+    int i = 0;
+    int sum = 0;
+
+    tmp_map = handlebars_map_ctor(context, 0);
+
+    const char *keys[] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"};
+    for (int k = 0; k < 10; k++) {
+        handlebars_value_integer(tmp, k + 1);
+        tmp_map = handlebars_map_str_update(tmp_map, keys[k], 1, tmp);
+    }
+
+    handlebars_value_map(value, tmp_map);
+
+    ck_assert_uint_eq(handlebars_map_count(tmp_map), 10);
+
+    HANDLEBARS_VALUE_FOREACH_KV(value, key, child) {
+        ++i;
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_INTEGER);
+        ck_assert_ptr_ne(key, NULL);
+        sum += handlebars_value_get_intval(child);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(i, 10);
+    ck_assert_int_eq(sum, 55); // 1+2+3+...+10
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_vm_hash_simulation)
+{
+    // Simulate exactly what VM does when creating options->hash for a helper
+    // with 5 hash arguments: {{test a="1" b="2" c="3" d="4" e="5"}}
+    // This is the exact scenario that crashes in php-handlebars
+    HANDLEBARS_VALUE_DECL(hash_value);
+    HANDLEBARS_VALUE_DECL(v1);
+    HANDLEBARS_VALUE_DECL(v2);
+    HANDLEBARS_VALUE_DECL(v3);
+    HANDLEBARS_VALUE_DECL(v4);
+    HANDLEBARS_VALUE_DECL(v5);
+    struct handlebars_map * map;
+    int count = 0;
+
+    // Create map with initial capacity 0 (like VM does)
+    map = handlebars_map_ctor(context, 0);
+
+    // Add string values (simulating hash arguments from template)
+    handlebars_value_str(v1, handlebars_string_ctor(context, HBS_STRL("1")));
+    map = handlebars_map_str_update(map, HBS_STRL("a"), v1);
+
+    handlebars_value_str(v2, handlebars_string_ctor(context, HBS_STRL("2")));
+    map = handlebars_map_str_update(map, HBS_STRL("b"), v2);
+
+    handlebars_value_str(v3, handlebars_string_ctor(context, HBS_STRL("3")));
+    map = handlebars_map_str_update(map, HBS_STRL("c"), v3);
+
+    handlebars_value_str(v4, handlebars_string_ctor(context, HBS_STRL("4")));
+    map = handlebars_map_str_update(map, HBS_STRL("d"), v4);
+
+    // 5th entry - this might trigger rehash
+    handlebars_value_str(v5, handlebars_string_ctor(context, HBS_STRL("5")));
+    map = handlebars_map_str_update(map, HBS_STRL("e"), v5);
+
+    // Wrap in value (like handlebars_value_map does)
+    handlebars_value_map(hash_value, map);
+
+    // Iterate - this is where php-handlebars crashes in handlebars_value_map_to_zval
+    HANDLEBARS_VALUE_FOREACH_KV(hash_value, key, child) {
+        count++;
+        ck_assert_ptr_ne(key, NULL);
+        ck_assert_ptr_ne(child, NULL);
+        ck_assert_int_eq(handlebars_value_get_type(child), HANDLEBARS_VALUE_TYPE_STRING);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(count, 5);
+
+    HANDLEBARS_VALUE_UNDECL(v5);
+    HANDLEBARS_VALUE_UNDECL(v4);
+    HANDLEBARS_VALUE_UNDECL(v3);
+    HANDLEBARS_VALUE_UNDECL(v2);
+    HANDLEBARS_VALUE_UNDECL(v1);
+    HANDLEBARS_VALUE_UNDECL(hash_value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
+START_TEST(test_map_iterator_vm_hash_simulation_six)
+{
+    // Same test but with 6 entries to ensure we test beyond capacity boundary
+    HANDLEBARS_VALUE_DECL(hash_value);
+    HANDLEBARS_VALUE_DECL(tmp);
+    struct handlebars_map * map;
+    int count = 0;
+
+    map = handlebars_map_ctor(context, 0);
+
+    const char *keys[] = {"a", "b", "c", "d", "e", "f"};
+    const char *vals[] = {"1", "2", "3", "4", "5", "6"};
+
+    for (int i = 0; i < 6; i++) {
+        handlebars_value_str(tmp, handlebars_string_ctor(context, vals[i], 1));
+        map = handlebars_map_str_update(map, keys[i], 1, tmp);
+    }
+
+    handlebars_value_map(hash_value, map);
+
+    HANDLEBARS_VALUE_FOREACH_KV(hash_value, key, child) {
+        count++;
+        ck_assert_ptr_ne(key, NULL);
+        ck_assert_ptr_ne(child, NULL);
+    } HANDLEBARS_VALUE_FOREACH_END();
+
+    ck_assert_int_eq(count, 6);
+
+    HANDLEBARS_VALUE_UNDECL(tmp);
+    HANDLEBARS_VALUE_UNDECL(hash_value);
+    ASSERT_INIT_BLOCKS();
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
@@ -517,6 +902,14 @@ static Suite * suite(void)
     REGISTER_TEST_FIXTURE(s, test_map_iterator, "Map iterator");
     REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse, "Map iterator (sparse)");
     REGISTER_TEST_FIXTURE(s, test_map_iterator_five_entries, "Map iterator (five entries)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse_five_entries, "Map iterator (sparse five entries)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse_remove_first, "Map iterator (sparse remove first)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse_remove_last, "Map iterator (sparse remove last)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse_multiple_removes, "Map iterator (sparse multiple removes)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_sparse_remove_all_but_one, "Map iterator (sparse remove all but one)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_ten_entries, "Map iterator (ten entries)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_vm_hash_simulation, "Map iterator (VM hash simulation)");
+    REGISTER_TEST_FIXTURE(s, test_map_iterator_vm_hash_simulation_six, "Map iterator (VM hash simulation six)");
     REGISTER_TEST_FIXTURE(s, test_array_find, "Array Find");
     REGISTER_TEST_FIXTURE(s, test_map_find, "Map Find");
     REGISTER_TEST_FIXTURE(s, test_readable_type, "Readable Type");
