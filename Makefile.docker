@@ -1,0 +1,36 @@
+# Docker Makefile для handlebars.c
+# Использование: make -f Makefile.docker <target>
+
+IMAGE_NAME = handlebars-c-test
+DOCKER = docker
+
+.PHONY: build test valgrind shell clean help
+
+# Сборка Docker образа
+build:
+	$(DOCKER) build -t $(IMAGE_NAME) .
+
+# Запуск всех тестов
+test: build
+	$(DOCKER) run --rm $(IMAGE_NAME)
+
+# Запуск тестов с valgrind
+valgrind: build
+	$(DOCKER) run --rm $(IMAGE_NAME) make valgrind-check
+
+# Интерактивный режим
+shell: build
+	$(DOCKER) run --rm -it $(IMAGE_NAME) bash
+
+# Удаление образа
+clean:
+	$(DOCKER) rmi -f $(IMAGE_NAME) 2>/dev/null || true
+
+# Справка
+help:
+	@echo "Доступные команды:"
+	@echo "  make -f Makefile.docker build    - Сборка Docker образа"
+	@echo "  make -f Makefile.docker test     - Запуск всех тестов"
+	@echo "  make -f Makefile.docker valgrind - Запуск тестов с valgrind"
+	@echo "  make -f Makefile.docker shell    - Интерактивный режим"
+	@echo "  make -f Makefile.docker clean    - Удаление образа"
