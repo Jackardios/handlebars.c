@@ -110,6 +110,25 @@ START_TEST(test_handlebars_string_reduce_3)
 }
 END_TEST
 
+START_TEST(test_handlebars_string_eq)
+{
+    struct handlebars_string * a = handlebars_string_ctor(context, HBS_STRL("hello"));
+    struct handlebars_string * b = handlebars_string_ctor(context, HBS_STRL("hello"));
+    struct handlebars_string * c = handlebars_string_ctor(context, HBS_STRL("world")); // same length
+    struct handlebars_string * d = handlebars_string_ctor(context, HBS_STRL("hell"));  // different length
+
+    ck_assert(handlebars_string_eq(a, b));
+    ck_assert(!handlebars_string_eq(a, c));
+    ck_assert(!handlebars_string_eq(a, d));
+    ck_assert(handlebars_string_eq(a, a));
+
+    handlebars_talloc_free(a);
+    handlebars_talloc_free(b);
+    handlebars_talloc_free(c);
+    handlebars_talloc_free(d);
+}
+END_TEST
+
 START_TEST(test_handlebars_string_replace_1)
 {
     struct handlebars_string * input = handlebars_string_ctor(context, HBS_STRL("abcdef"));
@@ -503,6 +522,7 @@ static Suite * suite(void)
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_reduce_1, "handlebars_string_reduce 1");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_reduce_2, "handlebars_string_reduce 2");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_reduce_3, "handlebars_string_reduce 3");
+    REGISTER_TEST_FIXTURE(s, test_handlebars_string_eq, "handlebars_string_eq");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_replace_1, "handlebars_string_replace 1");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_replace_2, "handlebars_string_replace 2");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_replace_3, "handlebars_string_replace 3");

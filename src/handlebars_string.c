@@ -333,9 +333,14 @@ bool handlebars_string_eq(
 ) {
     if( string1->len != string2->len ) {
         return false;
-    } else {
-        return hbs_str_hash(string1) == hbs_str_hash(string2);
     }
+    // The hash is a fast reject, but two distinct strings can share a 32-bit
+    // hash; confirm with the bytes so map/cache lookups cannot return a value
+    // stored under a different, colliding key.
+    if( hbs_str_hash(string1) != hbs_str_hash(string2) ) {
+        return false;
+    }
+    return 0 == memcmp(string1->val, string2->val, string1->len);
 }
 
 struct handlebars_string * handlebars_string_truncate(
@@ -402,13 +407,16 @@ struct handlebars_string * handlebars_str_reduce(
     const char * search, size_t search_len,
     const char * replacement, size_t replacement_len
 ) {
-    char * tok = string->val;
+    char * tok;
 
     if( replacement_len > search_len || search_len <= 0 || string->len <= 0 ) {
         return string;
     }
 
+    // separate_string may return a fresh copy (and free the original) when the
+    // string is shared, so capture the working pointer only afterwards.
     string = separate_string(string);
+    tok = string->val;
 
     while( NULL != (tok = (char *) handlebars_strnstr(tok, string->len - (tok - string->val), search, search_len)) ) {
         memmove(tok, replacement, replacement_len);
@@ -517,14 +525,19 @@ struct handlebars_string * handlebars_string_addcslashes(struct handlebars_conte
 
 struct handlebars_string * handlebars_string_stripcslashes(struct handlebars_string * string)
 {
-    char * source = string->val;
-    char * target = string->val;
-    char * end = string->val + string->len;
+    char * source;
+    char * target;
+    char * end;
     size_t nlen = string->len;
     size_t i;
     char numtmp[4];
 
+    // separate_string may return a fresh copy (and free the original) when the
+    // string is shared, so derive the working pointers only afterwards.
     string = separate_string(string);
+    source = string->val;
+    target = string->val;
+    end = string->val + string->len;
 
     for( ; source < end; source++ ) {
         if( *source == '\\' && source + 1 < end ) {

@@ -366,9 +366,15 @@ struct handlebars_value * handlebars_builtin_with(HANDLEBARS_HELPER_ARGS)
 struct handlebars_value * handlebars_builtin_hbsc_set_delimiters(HANDLEBARS_HELPER_ARGS)
 {
     if (argc == 2 && argv[0].type == HANDLEBARS_VALUE_TYPE_STRING && argv[1].type == HANDLEBARS_VALUE_TYPE_STRING) {
-        // @TODO we should delref the old ones
+        // Release any delimiters set by a previous call before overwriting them
+        if (vm->delim_open) {
+            handlebars_string_delref(vm->delim_open);
+        }
         vm->delim_open = handlebars_value_get_string(&argv[0]);
         handlebars_string_addref(vm->delim_open);
+        if (vm->delim_close) {
+            handlebars_string_delref(vm->delim_close);
+        }
         vm->delim_close = handlebars_value_get_string(&argv[1]);
         handlebars_string_addref(vm->delim_close);
     }

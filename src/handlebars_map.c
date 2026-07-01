@@ -194,7 +194,7 @@ static inline struct ht_find_result map_find_entry(
         } else if (table[pos] == HANDLEBARS_MAP_TOMBSTONE) {
             ret.tombstones++;
             if (!ret.empty_found) {
-                ret.empty_offset = true;
+                ret.empty_found = true;
                 ret.empty_offset = pos;
             }
         } else if( handlebars_string_eq(table[pos]->key, key) ) {

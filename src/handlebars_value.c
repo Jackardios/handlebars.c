@@ -830,7 +830,9 @@ static bool handlebars_value_iterator_next_stack(struct handlebars_value_iterato
     assert(value != NULL);
     assert(value->type == HANDLEBARS_VALUE_TYPE_ARRAY);
 
-    if( it->index >= handlebars_stack_count(value->v.stack) - 1 ) {
+    // Written as index+1 >= count so an empty stack (count == 0) does not
+    // underflow to SIZE_MAX and walk off the end.
+    if( it->index + 1 >= handlebars_stack_count(value->v.stack) ) {
         handlebars_value_dtor(it->cur);
         return false;
     }
@@ -848,7 +850,8 @@ static bool handlebars_value_iterator_next_map(struct handlebars_value_iterator 
     assert(it->value->type == HANDLEBARS_VALUE_TYPE_MAP);
 
 
-    if( it->index >= handlebars_map_count(it->value->v.map) - 1 ) {
+    // index+1 >= count avoids underflow to SIZE_MAX when the map is empty.
+    if( it->index + 1 >= handlebars_map_count(it->value->v.map) ) {
         handlebars_value_dtor(it->cur);
         handlebars_map_set_is_in_iteration(it->value->v.map, false);
         return false;

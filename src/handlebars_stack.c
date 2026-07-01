@@ -148,6 +148,9 @@ struct handlebars_stack * handlebars_stack_copy_ctor(struct handlebars_stack * p
         handlebars_value_value(&stack->v[i], &prev_stack->v[i]);
     }
     stack->i = prev_stack->i;
+    // Preserve the protected-segment boundary; otherwise a grown stack would
+    // allow popping/overwriting entries the original marked protected.
+    stack->protect = prev_stack->protect;
     return stack;
 }
 

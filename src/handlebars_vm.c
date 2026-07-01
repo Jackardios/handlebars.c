@@ -536,6 +536,10 @@ ACCEPT_FUNCTION(ambiguous_block_value)
         VM_TEARDOWN_OPTIONS(0);
     } else {
         VM_SETUP_OPTIONS(0);
+        // Consume last_helper here too, mirroring the lambda branch, so it does
+        // not linger until the next ambiguous invocation.
+        handlebars_string_delref(vm->last_helper);
+        vm->last_helper = NULL;
         VM_TEARDOWN_OPTIONS(0);
     }
 
@@ -663,6 +667,12 @@ ACCEPT_FUNCTION(invoke_ambiguous)
 
     VM_SETUP_OPTIONS(argc);
     options.name = opcode->op1.data.string.string;
+    // Release any last_helper left over from a prior ambiguous invocation that
+    // was never consumed by an ambiguous_block_value opcode (no-op for the usual
+    // immortal helper-name strings, frees the mortal "lambda" marker).
+    if (vm->last_helper) {
+        handlebars_string_delref(vm->last_helper);
+    }
     vm->last_helper = NULL;
 
     if (vm->flags & handlebars_compiler_flag_mustache_style_lambdas && is_callable) {
@@ -1405,8 +1415,17 @@ struct handlebars_string * handlebars_vm_execute_ex(
     struct handlebars_module * prev_module = vm->module;
     unsigned long prev_flags = vm->flags;
     struct handlebars_value * prev_last_context = vm->last_context;
+    // Hold a reference to the current delimiters across execution: a set-
+    // delimiters helper may replace (and release) them, and we restore these
+    // afterwards. The matching releases are in the restore block below.
     struct handlebars_string * prev_delim_open = vm->delim_open;
     struct handlebars_string * prev_delim_close = vm->delim_close;
+    if (prev_delim_open) {
+        handlebars_string_addref(prev_delim_open);
+    }
+    if (prev_delim_close) {
+        handlebars_string_addref(prev_delim_close);
+    }
 
     struct handlebars_string * buffer = NULL;
     bool volatile setup_stacks = false;
@@ -1452,7 +1471,14 @@ done:
         vm->partialBlockStack = NULL;
     }
 
-    // Reset
+    // Reset: release whatever delimiters execution left in place, then restore
+    // the saved ones (whose reference we took above).
+    if (vm->delim_open) {
+        handlebars_string_delref(vm->delim_open);
+    }
+    if (vm->delim_close) {
+        handlebars_string_delref(vm->delim_close);
+    }
     vm->delim_open = prev_delim_open;
     vm->delim_close = prev_delim_close;
     vm->last_context = prev_last_context;
