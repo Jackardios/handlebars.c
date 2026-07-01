@@ -284,6 +284,45 @@ START_TEST(test_mmap_cache_reset)
     handlebars_cache_dtor(cache);
 }
 END_TEST
+
+// Regression (F2): when the mmap data segment fills, appending a new entry
+// fails. cache_add used to still bump table_entries and store a NULL slot; it
+// now detects the failed append and resets the cache instead. Adding far more
+// distinct entries than the small segment can hold must therefore churn through
+// resets cleanly, without crashing or leaving the cache in a broken state.
+START_TEST(test_mmap_cache_overflow)
+{
+    // Small shared region but many table slots, so distinct keys land in
+    // distinct slots and actually fill the data segment (rather than colliding).
+    struct handlebars_cache * cache = handlebars_cache_mmap_ctor(context, 131072, 4096);
+
+    struct handlebars_ast_node * ast = handlebars_parse_ex(parser, handlebars_string_ctor(context, HBS_STRL("{{bar}}")), 0);
+    struct handlebars_program * program = handlebars_compiler_compile_ex(compiler, ast);
+    struct handlebars_module * module = handlebars_program_serialize(context, program);
+
+    int i;
+    for( i = 0; i < 5000; i++ ) {
+        struct handlebars_string * key = handlebars_string_asprintf(context, "tmpl-%d", i);
+        handlebars_cache_add(cache, key, module);
+        if( context->e->msg ) {
+            ck_abort_msg("ERROR adding entry %d: %s", i, context->e->msg);
+        }
+        handlebars_talloc_free(key);
+    }
+
+    // The cache is still usable after all that churn.
+    struct handlebars_string * key = handlebars_string_asprintf(context, "final-key");
+    handlebars_cache_add(cache, key, module);
+    struct handlebars_module * found = handlebars_cache_find(cache, key);
+    if( found ) {
+        handlebars_cache_release(cache, key, found);
+    }
+    ck_assert_ptr_eq(NULL, (void *) context->e->msg);
+    handlebars_talloc_free(key);
+
+    handlebars_cache_dtor(cache);
+}
+END_TEST
 #endif
 
 static Suite * suite(void);
@@ -302,6 +341,7 @@ static Suite * suite(void)
 #ifdef HANDLEBARS_HAVE_PTHREAD
     REGISTER_TEST_FIXTURE(s, test_mmap_cache_gc, "MMAP Cache (GC)");
     REGISTER_TEST_FIXTURE(s, test_mmap_cache_reset, "MMAP Cache (Reset)");
+    REGISTER_TEST_FIXTURE(s, test_mmap_cache_overflow, "MMAP Cache (Overflow)");
 #endif
 
     return s;

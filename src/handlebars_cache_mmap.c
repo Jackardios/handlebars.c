@@ -154,7 +154,8 @@ static inline void protect(struct handlebars_cache * cache, bool on)
     int prot = on ? PROT_READ : PROT_READ | PROT_WRITE;
     int rc = mprotect(intern->table, intern->table_size + intern->data_size, prot);
     if( rc != 0 ) {
-        handlebars_throw(HBSCTX(cache), HANDLEBARS_ERROR, "mprotect error: %s (%d)", strerror(rc), rc);
+        // mprotect returns -1 and sets errno; report errno, not the return code
+        handlebars_throw(HBSCTX(cache), HANDLEBARS_ERROR, "mprotect error: %s (%d)", strerror(errno), errno);
     }
 }
 
@@ -165,9 +166,20 @@ static inline void lock(struct handlebars_cache * cache)
 
     // Lock
 #ifdef USE_SPINLOCK
+    // Note: a process-shared spinlock cannot recover if an owner dies while
+    // holding it; a robust mutex (below) is preferred for multi-process use.
     rc = pthread_spin_lock(&intern->write_lock);
 #else
     rc = pthread_mutex_lock(&intern->write_lock);
+#ifdef PTHREAD_MUTEX_ROBUST
+    if( rc == EOWNERDEAD ) {
+        // A previous owner died while holding the lock. We now hold it; mark it
+        // consistent so it stays usable. Any half-written entry left behind is
+        // rejected by the per-entry validation in cache_find.
+        pthread_mutex_consistent(&intern->write_lock);
+        rc = 0;
+    }
+#endif
 #endif
     if( rc != 0 ) {
         handlebars_throw(HBSCTX(cache), HANDLEBARS_ERROR, "pthread lock error: %s (%d)", strerror(rc), rc);
@@ -196,14 +208,17 @@ static inline struct table_entry * table_find(struct handlebars_cache_mmap * int
     return intern->table[offset];
 }
 
-static inline void table_set(struct handlebars_cache_mmap * intern, struct table_entry * entry)
+// Returns false if the table entry could not be appended (data segment full),
+// leaving the slot untouched, so the caller can avoid counting a phantom entry.
+static inline bool table_set(struct handlebars_cache_mmap * intern, struct table_entry * entry)
 {
     uint32_t offset = hbs_str_hash(entry->key) % intern->table_count;
-    if( entry == NULL ) {
-        intern->table[offset] = NULL;
-    } else {
-        intern->table[offset] = append(intern, entry, sizeof(struct table_entry));
+    void * addr = append(intern, entry, sizeof(struct table_entry));
+    if( addr == NULL ) {
+        return false;
     }
+    intern->table[offset] = addr;
+    return true;
 }
 
 static inline void table_unset(struct handlebars_cache_mmap * intern, struct handlebars_string * string)
@@ -289,22 +304,34 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
     if( !entry ) {
         // Not found, or not ready
         INCR(intern->misses);
-        goto error;
+        return NULL;
     }
 
     // Compare key
     if( !handlebars_string_eq(key, entry->key) ) {
         INCR(intern->misses);
         //INCR(intern->collisions);
-        goto error;
+        return NULL;
     }
 
     // Get data
     module = entry->data;
 
+    // Claim a reference *before* dereferencing the module, so a concurrent
+    // cache_reset (which waits for refcount to drain) cannot zero the data
+    // segment while we read it. Then re-check in_reset to close the window
+    // between the top-of-function check and this increment.
+    INCR(intern->refcount);
+    if( unlikely(intern->in_reset) ) {
+        DECR(intern->refcount);
+        return NULL;
+    }
+
     // Check if it's too old or wrong version
     time(&now);
     if( module->version != handlebars_version() || (cache->max_age >= 0 && difftime(now, module->ts) >= cache->max_age) ) {
+        // Evict while still holding our reference so a reset waits for us, then
+        // release it and report a miss.
         lock(cache);
         protect(cache, false);
         table_unset(intern, key);
@@ -312,11 +339,13 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
         intern->table_entries--;
         protect(cache, true);
         unlock(cache);
-        goto error;
+        DECR(intern->refcount);
+        return NULL;
     }
 
     // Check for pointer mismatch
     if( unlikely((void *) module != module->addr) ) {
+        DECR(intern->refcount);
         handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Shared memory pointer mismatch: %p != %p", module, module->addr);
     }
 
@@ -325,15 +354,12 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
     // entry is treated as a miss rather than crashing the reader.
     if( unlikely(!handlebars_module_validate(module,
             (size_t) (((char *) intern->data + intern->data_length) - (char *) module), NULL)) ) {
+        DECR(intern->refcount);
         INCR(intern->misses);
-        module = NULL;
-        goto error;
+        return NULL;
     }
 
     INCR(intern->hits);
-    INCR(intern->refcount);
-
-error:
     return module;
 }
 
@@ -382,8 +408,15 @@ static void cache_add(
     // Pre-patch pointers
     handlebars_module_patch_pointers(entry.data);
 
-    // Finish;
-    table_set(intern, &entry);
+    // Finish; if the table entry itself will not fit, treat it like the
+    // key/data append failure above: drop the lock and reset rather than
+    // counting an entry that was never stored.
+    if( unlikely(!table_set(intern, &entry)) ) {
+        protect(cache, true);
+        unlock(cache);
+        cache_reset(cache);
+        return;
+    }
     intern->table_entries++;
 
 error:
@@ -486,7 +519,13 @@ struct handlebars_cache * handlebars_cache_mmap_ctor(
     pthread_mutexattr_t mattr;
     pthread_mutexattr_init(&mattr);
     pthread_mutexattr_setpshared(&mattr, PTHREAD_PROCESS_SHARED);
+#ifdef PTHREAD_MUTEX_ROBUST
+    // Make the shared mutex robust so it recovers if a process dies while
+    // holding it (see lock()). Not available on every platform (e.g. macOS).
+    pthread_mutexattr_setrobust(&mattr, PTHREAD_MUTEX_ROBUST);
+#endif
     int rc = pthread_mutex_init(&intern->write_lock, &mattr);
+    pthread_mutexattr_destroy(&mattr);
 #endif
     if( rc != 0 ) {
         handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Failed to init lock: %s (%d)", strerror(rc), rc);
