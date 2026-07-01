@@ -36,6 +36,7 @@ struct handlebars_vm {
     struct handlebars_module * module;
 
     long depth;
+    long max_depth;
     unsigned long flags;
 
     struct handlebars_string * buffer;

@@ -107,6 +107,37 @@ START_TEST(test_compiler_deep_nesting)
 }
 END_TEST
 
+// Regression (C3): parsing runs the whitespace tree-walk over the freshly built
+// AST before compilation. Without a bound, a pathologically nested template can
+// recurse deep enough to overflow the C stack in that walk (and later ones).
+// The walk now caps its depth and raises a clean parse error, so even a template
+// far deeper than anything the compiler would accept cannot crash the parser.
+START_TEST(test_parse_deep_nesting)
+{
+    jmp_buf buf;
+    struct handlebars_string * tmpl;
+    int i;
+    const int depth = 2000; // >> HANDLEBARS_WHITESPACE_MAX_DEPTH once doubled per level
+
+    if( handlebars_setjmp_ex(context, &buf) ) {
+        fprintf(stderr, "Got expected error: %s\n", handlebars_error_message(context));
+        ck_assert(1);
+        return;
+    }
+
+    tmpl = handlebars_string_ctor(context, HBS_STRL(""));
+    for( i = 0; i < depth; i++ ) {
+        tmpl = handlebars_string_append(context, tmpl, HBS_STRL("{{#a}}"));
+    }
+    for( i = 0; i < depth; i++ ) {
+        tmpl = handlebars_string_append(context, tmpl, HBS_STRL("{{/a}}"));
+    }
+
+    (void) handlebars_parse_ex(parser, tmpl, 0);
+    ck_abort_msg("Expected a nesting-depth error while parsing deeply nested blocks");
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
@@ -114,6 +145,7 @@ static Suite * suite(void)
     REGISTER_TEST_FIXTURE(s, test_parse_short_comment, "Short comment ({{!-}}) does not crash");
     REGISTER_TEST_FIXTURE(s, test_delimiter_empty_close, "Empty close delimiter raises error");
     REGISTER_TEST_FIXTURE(s, test_compiler_deep_nesting, "Deeply nested blocks raise stack overflow");
+    REGISTER_TEST_FIXTURE(s, test_parse_deep_nesting, "Deeply nested blocks do not crash the parser");
     return s;
 }
 

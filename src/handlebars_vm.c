@@ -146,6 +146,11 @@ void handlebars_vm_set_flags(struct handlebars_vm * vm, unsigned long flags)
     vm->flags = flags;
 }
 
+void handlebars_vm_set_max_depth(struct handlebars_vm * vm, long max_depth)
+{
+    vm->max_depth = max_depth;
+}
+
 void handlebars_vm_set_helpers(struct handlebars_vm * vm, struct handlebars_value * helpers)
 {
     handlebars_value_value(&vm->helpers, helpers);
@@ -381,6 +386,10 @@ static struct handlebars_string * execute_template(
 
         // Cleanup parser
         handlebars_parser_dtor(parser);
+    }
+
+    if( vm->depth >= (vm->max_depth > 0 ? vm->max_depth : HANDLEBARS_VM_MAX_DEPTH) ) {
+        handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Maximum partial recursion depth exceeded");
     }
 
     vm->depth++;

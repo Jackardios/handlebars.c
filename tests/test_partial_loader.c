@@ -159,6 +159,47 @@ START_TEST(test_partial_loader_empty_error)
 }
 END_TEST
 
+// Regression (C1): a partial that includes itself recurses through
+// execute_template forever. The VM now bounds partial recursion depth; when the
+// bound is reached that partial invocation raises an error which its own
+// setjmp turns into an empty render, so the whole thing terminates cleanly
+// instead of overflowing the C stack. Here we set a small bound so the test
+// does not depend on surviving the default number of nested frames.
+START_TEST(test_recursive_partial)
+{
+    struct handlebars_module * module;
+    struct handlebars_string * tmpl = handlebars_string_ctor(HBSCTX(parser), HBS_STRL("{{> self}}"));
+
+    struct handlebars_ast_node * ast = handlebars_parse_ex(parser, tmpl, 0);
+    ck_assert_int_eq(handlebars_error_num(context), HANDLEBARS_SUCCESS);
+
+    struct handlebars_program * program = handlebars_compiler_compile_ex(compiler, ast);
+    ck_assert_int_eq(handlebars_error_num(context), HANDLEBARS_SUCCESS);
+
+    module = handlebars_program_serialize(context, program);
+
+    handlebars_vm_set_max_depth(vm, 64);
+
+    HANDLEBARS_VALUE_DECL(partials);
+    handlebars_value_init_json_string(context, partials, "{\"self\":\"{{> self}}\"}");
+    handlebars_value_convert(partials);
+    handlebars_vm_set_partials(vm, partials);
+
+    HANDLEBARS_VALUE_DECL(input);
+    handlebars_value_init_json_string(context, input, "{}");
+    handlebars_value_convert(input);
+
+    struct handlebars_string * buffer = handlebars_vm_execute(vm, module, input);
+
+    // Terminated without a crash or hang; the capped recursion renders empty.
+    ck_assert_ptr_ne(NULL, buffer);
+    ck_assert_hbs_str_eq_cstr(buffer, "");
+
+    HANDLEBARS_VALUE_UNDECL(input);
+    HANDLEBARS_VALUE_UNDECL(partials);
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
@@ -168,6 +209,7 @@ static Suite * suite(void)
 	REGISTER_TEST_FIXTURE(s, test_partial_loader_2, "Partial loader 2");
 	REGISTER_TEST_FIXTURE(s, test_partial_loader_error, "Partial loader error");
 	REGISTER_TEST_FIXTURE(s, test_partial_loader_empty_error, "Partial loader empty error");
+	REGISTER_TEST_FIXTURE(s, test_recursive_partial, "Recursive partial is bounded");
 
     return s;
 }

@@ -24,6 +24,7 @@
 #include <talloc.h>
 
 #include "handlebars_memory.h"
+#include "handlebars_string.h"
 #include "handlebars_value.h"
 #include "handlebars_yaml.h"
 #include "utils.h"
@@ -113,6 +114,42 @@ START_TEST(test_parse_error_yaml)
 }
 END_TEST
 
+// Regression (C2): converting a YAML document into a value recurses into nested
+// mappings/sequences. A deeply nested document (or an anchor/alias cycle, which
+// libyaml resolves into a self-referential node graph) would otherwise recurse
+// until the C stack overflows. The conversion now caps its depth and raises a
+// clean error.
+START_TEST(test_deep_nesting_yaml)
+{
+    HANDLEBARS_VALUE_DECL(value);
+    jmp_buf buf;
+    struct handlebars_string * yaml;
+    int i;
+    const int depth = 2000; // > HANDLEBARS_YAML_MAX_DEPTH (1000)
+
+    if( handlebars_setjmp_ex(context, &buf) ) {
+        fprintf(stderr, "Got expected error: %s\n", handlebars_error_message(context));
+        ck_assert(1);
+        HANDLEBARS_VALUE_UNDECL(value);
+        return;
+    }
+
+    // Flow-style nested sequences: [[[ ... ]]]
+    yaml = handlebars_string_ctor(context, HBS_STRL("---\n"));
+    for( i = 0; i < depth; i++ ) {
+        yaml = handlebars_string_append(context, yaml, HBS_STRL("["));
+    }
+    for( i = 0; i < depth; i++ ) {
+        yaml = handlebars_string_append(context, yaml, HBS_STRL("]"));
+    }
+
+    handlebars_value_init_yaml_string(context, value, hbs_str_val(yaml));
+    ck_abort_msg("Expected a nesting-depth error for deeply nested YAML");
+
+    HANDLEBARS_VALUE_UNDECL(value);
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
@@ -124,6 +161,7 @@ static Suite * suite(void)
     REGISTER_TEST_FIXTURE(s, test_float_yaml, "Float");
     REGISTER_TEST_FIXTURE(s, test_string_yaml, "String");
     REGISTER_TEST_FIXTURE(s, test_parse_error_yaml, "YAML Parse Error");
+    REGISTER_TEST_FIXTURE(s, test_deep_nesting_yaml, "YAML deep nesting raises error");
 
     return s;
 }

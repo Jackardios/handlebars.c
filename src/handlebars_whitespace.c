@@ -478,6 +478,16 @@ static inline void handlebars_whitespace_accept_raw_block(struct handlebars_pars
     raw_block->strip = strip;
 }
 
+// Caps the depth of this recursive tree walk, which is the first deep recursion
+// over untrusted input after the parse (it runs before compilation). The bound
+// is well above what the compiler accepts (its block-nesting stack is far
+// smaller), so it never rejects a template that would otherwise compile; it only
+// prevents a pathologically nested document from overflowing the C stack here or
+// in later traversals. Throwing is safe: the parser runs under a setjmp.
+#ifndef HANDLEBARS_WHITESPACE_MAX_DEPTH
+#define HANDLEBARS_WHITESPACE_MAX_DEPTH 1024
+#endif
+
 void handlebars_whitespace_accept(struct handlebars_parser * parser,
         struct handlebars_ast_node * node)
 {
@@ -485,19 +495,28 @@ void handlebars_whitespace_accept(struct handlebars_parser * parser,
         return;
     }
 
+    if( unlikely(++parser->accept_depth > HANDLEBARS_WHITESPACE_MAX_DEPTH) ) {
+        handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Maximum template nesting depth exceeded");
+    }
+
     switch( node->type ) {
         case HANDLEBARS_AST_NODE_BLOCK:
-            return handlebars_whitespace_accept_block(parser, node);
+            handlebars_whitespace_accept_block(parser, node);
+            break;
         case HANDLEBARS_AST_NODE_MUSTACHE:
-            return handlebars_whitespace_accept_mustache(parser, node);
+            handlebars_whitespace_accept_mustache(parser, node);
+            break;
         case HANDLEBARS_AST_NODE_PROGRAM:
-            return handlebars_whitespace_accept_program(parser, node);
+            handlebars_whitespace_accept_program(parser, node);
+            break;
         case HANDLEBARS_AST_NODE_RAW_BLOCK:
-            return handlebars_whitespace_accept_raw_block(parser, node);
+            handlebars_whitespace_accept_raw_block(parser, node);
+            break;
 
         case HANDLEBARS_AST_NODE_PARTIAL:
         case HANDLEBARS_AST_NODE_COMMENT:
-            return handlebars_whitespace_accept_generic(parser, node);
+            handlebars_whitespace_accept_generic(parser, node);
+            break;
 
         // LCOV_EXCL_START
         // These don't do anything
@@ -523,4 +542,6 @@ void handlebars_whitespace_accept(struct handlebars_parser * parser,
             break;
         // LCOV_EXCL_STOP
     }
+
+    parser->accept_depth--;
 }

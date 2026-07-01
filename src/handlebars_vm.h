@@ -34,6 +34,10 @@ struct handlebars_vm;
 #define HANDLEBARS_VM_STACK_SIZE 96
 #endif
 
+#ifndef HANDLEBARS_VM_MAX_DEPTH
+#define HANDLEBARS_VM_MAX_DEPTH 1024
+#endif
+
 #ifndef HANDLEBARS_VM_BUFFER_INIT_SIZE
 #define HANDLEBARS_VM_BUFFER_INIT_SIZE 128
 #endif
@@ -98,6 +102,7 @@ struct handlebars_value * handlebars_vm_call_helper_str(
 ) HBS_ATTR_NONNULL(1, 4, 5) HBS_ATTR_WARN_UNUSED_RESULT;
 
 void handlebars_vm_set_flags(struct handlebars_vm * vm, unsigned long flags) HBS_ATTR_NONNULL_ALL;
+void handlebars_vm_set_max_depth(struct handlebars_vm * vm, long max_depth) HBS_ATTR_NONNULL_ALL;
 void handlebars_vm_set_helpers(struct handlebars_vm * vm, struct handlebars_value * helpers) HBS_ATTR_NONNULL_ALL;
 void handlebars_vm_set_partials(struct handlebars_vm * vm, struct handlebars_value * helpers) HBS_ATTR_NONNULL_ALL;
 void handlebars_vm_set_data(struct handlebars_vm * vm, struct handlebars_value * data) HBS_ATTR_NONNULL_ALL;

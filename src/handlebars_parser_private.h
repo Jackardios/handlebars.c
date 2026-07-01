@@ -46,6 +46,8 @@ struct handlebars_parser
     struct handlebars_ast_node * program;
     bool whitespace_root_seen;
     unsigned flags;
+    //! Current recursion depth of the whitespace-accept tree walk
+    unsigned accept_depth;
 };
 
 #ifdef TLS

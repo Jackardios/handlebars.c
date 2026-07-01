@@ -32,6 +32,14 @@
 
 
 
+// Bounds recursion into the YAML document tree. Besides guarding against a
+// stack overflow from a deeply nested document, this also breaks the otherwise
+// infinite recursion that anchor/alias cycles (e.g. a: &x { b: *x }) produce,
+// since libyaml resolves an alias to the very node that contains it.
+#ifndef HANDLEBARS_YAML_MAX_DEPTH
+#define HANDLEBARS_YAML_MAX_DEPTH 1000
+#endif
+
 struct _yaml_ctx {
     yaml_parser_t parser;
     yaml_document_t document;
@@ -44,12 +52,16 @@ static int _yaml_ctx_dtor(struct _yaml_ctx * holder)
     return 0;
 }
 
-void handlebars_value_init_yaml_node(struct handlebars_context *ctx, struct handlebars_value * value, struct yaml_document_s * document, struct yaml_node_s * node)
+static void yaml_node_to_value(struct handlebars_context *ctx, struct handlebars_value * value, struct yaml_document_s * document, struct yaml_node_s * node, unsigned int depth)
 {
     HANDLEBARS_VALUE_DECL(tmp);
     yaml_node_pair_t * pair;
     yaml_node_item_t * item;
     char * end = NULL;
+
+    if( depth > HANDLEBARS_YAML_MAX_DEPTH ) {
+        handlebars_throw(ctx, HANDLEBARS_ERROR, "Maximum YAML nesting depth exceeded");
+    }
 
     switch( node->type ) {
         case YAML_MAPPING_NODE: {
@@ -58,7 +70,7 @@ void handlebars_value_init_yaml_node(struct handlebars_context *ctx, struct hand
                 yaml_node_t * keyNode = yaml_document_get_node(document, pair->key);
                 yaml_node_t * valueNode = yaml_document_get_node(document, pair->value);
                 assert(keyNode->type == YAML_SCALAR_NODE);
-                handlebars_value_init_yaml_node(ctx, tmp, document, valueNode);
+                yaml_node_to_value(ctx, tmp, document, valueNode, depth + 1);
                 map = handlebars_map_str_update(map, (const char *) keyNode->data.scalar.value, keyNode->data.scalar.length, tmp);
             }
             handlebars_value_map(value, map);
@@ -68,7 +80,7 @@ void handlebars_value_init_yaml_node(struct handlebars_context *ctx, struct hand
             struct handlebars_stack * stack = handlebars_stack_ctor(ctx, node->data.sequence.items.top - node->data.sequence.items.start);
             for( item = node->data.sequence.items.start; item < node->data.sequence.items.top; item++) {
                 yaml_node_t * valueNode = yaml_document_get_node(document, *item);
-                handlebars_value_init_yaml_node(ctx, tmp, document, valueNode);
+                yaml_node_to_value(ctx, tmp, document, valueNode, depth + 1);
                 stack = handlebars_stack_push(stack, tmp);
             }
             handlebars_value_array(value, stack);
@@ -106,6 +118,11 @@ void handlebars_value_init_yaml_node(struct handlebars_context *ctx, struct hand
 
 done:
     HANDLEBARS_VALUE_UNDECL(tmp);
+}
+
+void handlebars_value_init_yaml_node(struct handlebars_context *ctx, struct handlebars_value * value, struct yaml_document_s * document, struct yaml_node_s * node)
+{
+    yaml_node_to_value(ctx, value, document, node, 0);
 }
 
 void handlebars_value_init_yaml_string(struct handlebars_context * ctx, struct handlebars_value * value, const char * yaml)
