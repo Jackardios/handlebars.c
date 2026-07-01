@@ -168,10 +168,17 @@ struct handlebars_string * handlebars_preprocess_delimiters(
                     handlebars_throw(ctx, HANDLEBARS_ERROR, "Delimiter change must contain two equals");
                 }
 
-                // Scan backwards while whitespace
+                // Scan backwards while whitespace (bounded by the start of the
+                // close-delimiter region so we never walk before it)
                 pce = p - 1;
-                while( *pce == ' ' ) {
+                while( pce >= pc && *pce == ' ' ) {
                     pce--;
+                }
+
+                // Reject an empty close delimiter; otherwise pce - pc + 1 is
+                // negative and wraps to a huge size_t in handlebars_string_ctor.
+                if( pce < pc ) {
+                    handlebars_throw(ctx, HANDLEBARS_ERROR, "Delimiter change close tag must not be empty");
                 }
 
                 // Save new close tag

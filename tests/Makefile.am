@@ -34,6 +34,7 @@ check_PROGRAMS = \
 	test_map \
 	test_opcode_printer \
 	test_opcodes \
+	test_parser_errors \
 	test_stack \
 	test_string \
 	test_token \
@@ -48,6 +49,7 @@ test_compiler_SOURCES = $(COMMONFILES) test_compiler.c
 test_map_SOURCES = $(COMMONFILES) test_map.c
 test_opcode_printer_SOURCES = $(COMMONFILES) test_opcode_printer.c
 test_opcodes_SOURCES = $(COMMONFILES) test_opcodes.c
+test_parser_errors_SOURCES = $(COMMONFILES) test_parser_errors.c
 test_stack_SOURCES = $(COMMONFILES) test_stack.c
 test_string_SOURCES = $(COMMONFILES) test_string.c
 test_token_SOURCES = $(COMMONFILES) test_token.c

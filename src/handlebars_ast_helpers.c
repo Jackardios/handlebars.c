@@ -301,8 +301,11 @@ struct handlebars_ast_node * handlebars_ast_helper_prepare_raw_block(
     assert(close != NULL);
 
     open_block_path = open_raw_block->node.intermediate.path;
-    if( !handlebars_string_eq(open_block_path->node.path.original, close) ) {
-        struct handlebars_string * open = open_block_path->node.path.original;
+    // Resolve the open-block name via the type-dispatching accessor: the grammar
+    // permits non-path names here (NUMBER/STRING/BOOLEAN/...), so reading
+    // node.path.original unconditionally would misread the union.
+    struct handlebars_string * open = handlebars_ast_node_get_string_mode_value(CONTEXT, open_block_path);
+    if( !handlebars_string_eq(open, close) ) {
         handlebars_throw_ex(
             CONTEXT,
             HANDLEBARS_ERROR,

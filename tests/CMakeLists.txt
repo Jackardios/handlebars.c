@@ -35,6 +35,7 @@ add_executable(test_json ${COMMON_TEST_FILES} test_json.c)
 add_executable(test_map ${COMMON_TEST_FILES} test_map.c)
 add_executable(test_opcode_printer ${COMMON_TEST_FILES} test_opcode_printer.c)
 add_executable(test_opcodes ${COMMON_TEST_FILES} test_opcodes.c)
+add_executable(test_parser_errors ${COMMON_TEST_FILES} test_parser_errors.c)
 # @TODO FIXME broken because test files are in the wrong path
 #add_executable(test_partial_loader ${COMMON_TEST_FILES} test_partial_loader.c)
 #add_executable(test_random_alloc_fail ${COMMON_TEST_FILES} test_random_alloc_fail.c)

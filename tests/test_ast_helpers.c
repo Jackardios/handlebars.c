@@ -106,6 +106,16 @@ START_TEST(test_ast_helper_strip_comment)
     tmp = handlebars_string_ctor(context, HBS_STRL("{{~!-- baz --~}}"));
     handlebars_ast_helper_strip_comment(tmp);
     ck_assert_str_eq(hbs_str_val(tmp), " baz ");
+
+    // Regression: these short comments previously produced start > end and
+    // underflowed handlebars_string_truncate (memmove with SIZE_MAX).
+    tmp = handlebars_string_ctor(context, HBS_STRL("{{!-}}"));
+    handlebars_ast_helper_strip_comment(tmp);
+    ck_assert_str_eq(hbs_str_val(tmp), "");
+
+    tmp = handlebars_string_ctor(context, HBS_STRL("{{~!-}}"));
+    handlebars_ast_helper_strip_comment(tmp);
+    ck_assert_str_eq(hbs_str_val(tmp), "");
 }
 END_TEST
 

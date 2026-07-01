@@ -83,6 +83,7 @@ struct handlebars_closure * handlebars_closure_ctor(
     struct handlebars_value * localv
 ) {
     struct handlebars_closure * closure = handlebars_talloc_zero_size(vm, sizeof(struct handlebars_closure) + (sizeof(struct handlebars_value) * localc));
+    HANDLEBARS_MEMCHECK(closure, HBSCTX(vm));
     talloc_set_type(closure, struct handlebars_closure);
 #ifndef HANDLEBARS_NO_REFCOUNT
     handlebars_rc_init(&closure->rc);

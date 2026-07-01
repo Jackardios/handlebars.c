@@ -241,6 +241,7 @@ struct handlebars_module * handlebars_program_serialize(
 ) {
     // Allocate initial buffer
     struct handlebars_module * module = handlebars_talloc_zero(context, struct handlebars_module);
+    HANDLEBARS_MEMCHECK(module, context);
     memcpy(&module->header, "HBSCM", sizeof("HBSCM"));
     module->version = handlebars_version();
     module->flags = program->flags;
@@ -251,6 +252,7 @@ struct handlebars_module * handlebars_program_serialize(
 
     // Reallocate buffer
     module = handlebars_talloc_realloc_size(context, module, module->size);
+    HANDLEBARS_MEMCHECK(module, context);
     module->addr = (void *) module;
     talloc_set_type(module, struct handlebars_module);
 

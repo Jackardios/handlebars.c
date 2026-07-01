@@ -466,6 +466,29 @@ START_TEST(test_handlebars_string_truncate_4)
 }
 END_TEST
 
+// Regression: start greater than the (right-truncated) length must be clamped
+// rather than underflowing the size_t length subtraction.
+START_TEST(test_handlebars_string_truncate_start_gt_end)
+{
+    struct handlebars_string * str = handlebars_string_ctor(context, HBS_STRL("abc"));
+    str = handlebars_string_truncate(str, 4, 3);
+    ck_assert_uint_eq(hbs_str_len(str), 0);
+    ck_assert_str_eq(hbs_str_val(str), "");
+    handlebars_talloc_free(str);
+}
+END_TEST
+
+// An end past the length simply means "no right truncation".
+START_TEST(test_handlebars_string_truncate_end_gt_len)
+{
+    struct handlebars_string * str = handlebars_string_ctor(context, HBS_STRL("abc"));
+    str = handlebars_string_truncate(str, 1, 10);
+    ck_assert_str_eq(hbs_str_val(str), "bc");
+    ck_assert_uint_eq(hbs_str_len(str), 2);
+    handlebars_talloc_free(str);
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
@@ -519,6 +542,8 @@ static Suite * suite(void)
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_truncate_2, "handlebars_string_truncate 2");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_truncate_3, "handlebars_string_truncate 3");
     REGISTER_TEST_FIXTURE(s, test_handlebars_string_truncate_4, "handlebars_string_truncate 4");
+    REGISTER_TEST_FIXTURE(s, test_handlebars_string_truncate_start_gt_end, "handlebars_string_truncate start > end");
+    REGISTER_TEST_FIXTURE(s, test_handlebars_string_truncate_end_gt_len, "handlebars_string_truncate end > len");
 
     return s;
 }

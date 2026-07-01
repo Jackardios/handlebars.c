@@ -350,6 +350,13 @@ struct handlebars_string * handlebars_string_truncate(
         string->len = end;
     }
 
+    // Clamp the left offset: callers may compute start and end independently
+    // (e.g. comment stripping), and a start past the right-truncated length
+    // would otherwise underflow the size_t subtraction below.
+    if (start > string->len) {
+        start = string->len;
+    }
+
     // Truncate left
     if (start > 0) {
         memmove(string->val, string->val + start, string->len - start);
@@ -770,7 +777,8 @@ struct handlebars_string * handlebars_string_indent_append(
 ) {
     const char * str = input_string->val;
     size_t str_len = input_string->len;
-    bool endsInLine = (str[str_len - 1] == '\n');
+    // Guard against an empty input: str[str_len - 1] would read str[-1].
+    bool endsInLine = (str_len > 0 && str[str_len - 1] == '\n');
     size_t i;
     char tmp[2] = "\0";
 
