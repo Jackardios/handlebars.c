@@ -213,10 +213,15 @@ static void execute_reset_test(struct handlebars_cache * cache)
     ck_assert_int_ge(handlebars_cache_stat(cache).hits, 1);
     ck_assert_int_le(handlebars_cache_stat(cache).misses, 1);
 
-    // Reset
-    handlebars_cache_reset(cache);
+    // Before reset the compiled partial is cached
+    ck_assert_uint_gt(handlebars_cache_stat(cache).current_entries, 0);
 
-    // This shouldn't use the cache
+    // Reset must actually clear the cache. (Regression: the LMDB backend used to
+    // abort the drop transaction, so reset silently did nothing.)
+    handlebars_cache_reset(cache);
+    ck_assert_uint_eq(0, handlebars_cache_stat(cache).current_entries);
+
+    // This should now be a cache miss, repopulating the cache
     buffer = handlebars_vm_execute(vm, module, value);
     if (context->e->msg) {
         ck_abort_msg("ERROR: %s\n", context->e->msg);
@@ -227,9 +232,6 @@ static void execute_reset_test(struct handlebars_cache * cache)
     HANDLEBARS_VALUE_UNDECL(helpers);
     HANDLEBARS_VALUE_UNDECL(partials);
     HANDLEBARS_VALUE_UNDECL(partial);
-
-    ck_assert_int_ge(handlebars_cache_stat(cache).hits, 0);
-    ck_assert_int_le(handlebars_cache_stat(cache).misses, 1);
 }
 
 START_TEST(test_simple_cache_gc)
@@ -278,7 +280,7 @@ END_TEST
 START_TEST(test_mmap_cache_reset)
 {
     struct handlebars_cache * cache = handlebars_cache_mmap_ctor(context, 2097152, 2053);
-    execute_gc_test(cache);
+    execute_reset_test(cache);
     handlebars_cache_dtor(cache);
 }
 END_TEST

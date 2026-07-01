@@ -94,14 +94,25 @@ static int cache_gc(struct handlebars_cache * cache)
 
         struct handlebars_module * module = (struct handlebars_module *) data.mv_data;
         if( cache->max_age >= 0 && difftime(now, module->ts) > cache->max_age ) {
-            mdb_del(txn, dbi, &key, NULL);
+            mdb_cursor_del(cursor, 0);
         }
     }
 
     mdb_cursor_close(cursor);
-error:
+
+    // The cursor loop terminates with MDB_NOTFOUND; anything else is a real error.
+    if( err != MDB_NOTFOUND ) {
+        goto error;
+    }
+
+    // Commit so the deletions actually persist (an abort would discard them).
+    err = mdb_txn_commit(txn);
     HANDLE_RC(err);
+    return 0;
+
+error:
     mdb_txn_abort(txn);
+    HANDLE_RC(err);
     return 0;
 }
 
@@ -127,7 +138,9 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
     if( err != 0 ) goto error;
 
     // Make key
-    if( hbs_str_len(tmpl) > (size_t) mdb_env_get_maxkeysize(intern->env) ) {
+    // The non-hashed branch stores hbs_str_len(tmpl) + 1 bytes (including the
+    // NUL terminator), so compare that against the max key size.
+    if( hbs_str_len(tmpl) + 1 > (size_t) mdb_env_get_maxkeysize(intern->env) ) {
         snprintf(tmp, 256, "hash:%lu", (unsigned long) hbs_str_hash(tmpl));
         key.mv_size = strlen(tmp);
         key.mv_data = tmp;
@@ -207,7 +220,9 @@ static void cache_add(
     if( err != 0 ) goto error;
 
     // Make key
-    if( hbs_str_len(tmpl) > (size_t) mdb_env_get_maxkeysize(intern->env) ) {
+    // The non-hashed branch stores hbs_str_len(tmpl) + 1 bytes (including the
+    // NUL terminator), so compare that against the max key size.
+    if( hbs_str_len(tmpl) + 1 > (size_t) mdb_env_get_maxkeysize(intern->env) ) {
         snprintf(tmp, 256, "hash:%lu", (unsigned long) hbs_str_hash(tmpl));
         key.mv_size = strlen(tmp);
         key.mv_data = tmp;
@@ -233,9 +248,11 @@ static void cache_add(
     handlebars_talloc_free(module_copy);
     if( err != 0 ) goto error;
 
-    // Commit
+    // Commit. mdb_txn_commit frees the txn handle whether it succeeds or fails,
+    // so on failure we must NOT abort it (that would be a double-free); just
+    // report the error.
     err = mdb_txn_commit(txn);
-    if( err != 0 ) goto error;
+    HANDLE_RC(err);
 
     return;
 
@@ -266,7 +283,7 @@ static struct handlebars_cache_stat cache_stat(struct handlebars_cache * cache)
     err = mdb_stat(txn, dbi, &stat);
     if( err != 0 ) goto error;
 
-    intern->stat.name = "mmap";
+    intern->stat.name = "lmdb";
     intern->stat.current_entries = stat.ms_entries;
 
 error:
@@ -291,7 +308,12 @@ static void cache_reset(struct handlebars_cache * cache)
     err = mdb_drop(txn, dbi, 0);
     if( err != 0 ) goto error;
 
-    error:
+    // Commit so the drop actually takes effect (an abort would roll it back).
+    err = mdb_txn_commit(txn);
+    HANDLE_RC(err);
+    return;
+
+error:
     mdb_txn_abort(txn);
     HANDLE_RC(err);
 }
@@ -324,6 +346,9 @@ struct handlebars_cache * handlebars_cache_lmdb_ctor(
     cache->internal = intern;
 
     mdb_env_create(&intern->env);
+    // Raise the map size well above LMDB's tiny default (~1 MiB) so modest
+    // caches do not immediately hit MDB_MAP_FULL on the first few writes.
+    mdb_env_set_mapsize(intern->env, (size_t) 1024 * 1024 * 1024); // 1 GiB
     talloc_set_destructor(cache, cache_dtor);
 
     int err = mdb_env_open(intern->env, path, MDB_WRITEMAP | MDB_MAPASYNC | MDB_NOSUBDIR, 0644);
