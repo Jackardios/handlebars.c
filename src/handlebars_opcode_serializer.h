@@ -82,6 +82,25 @@ bool handlebars_module_verify(
     struct handlebars_context * ctx
 ) HBS_ATTR_NONNULL(1);
 
+/**
+ * @brief Structurally validate a module loaded from an untrusted buffer before
+ *        its internal pointers are patched. Checks the header, version, declared
+ *        size against the actual buffer size, the program/opcode counts and
+ *        array layout, each program's opcode range, and that every string/array
+ *        operand points within the buffer. This guards against out-of-bounds
+ *        access from a corrupt or malicious cache entry, which the xxh3 hash
+ *        (not a keyed MAC) cannot.
+ * @param[in] module The module to validate (pointers not yet patched)
+ * @param[in] actual_size The true size of the buffer backing `module`
+ * @param[in] ctx If non-NULL, throw with a message on failure instead of returning
+ * @return Whether the module is structurally valid
+ */
+bool handlebars_module_validate(
+    struct handlebars_module * module,
+    size_t actual_size,
+    struct handlebars_context * ctx
+) HBS_ATTR_NONNULL(1);
+
 size_t handlebars_module_get_size(struct handlebars_module * module) HBS_ATTR_NONNULL_ALL;
 int handlebars_module_get_version(struct handlebars_module * module) HBS_ATTR_NONNULL_ALL;
 time_t handlebars_module_get_ts(struct handlebars_module * module) HBS_ATTR_NONNULL_ALL;

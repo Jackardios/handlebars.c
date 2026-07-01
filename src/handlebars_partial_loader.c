@@ -80,6 +80,41 @@ static enum handlebars_value_type hbs_partial_loader_type(struct handlebars_valu
     return HANDLEBARS_VALUE_TYPE_MAP;
 }
 
+// Rejects partial names that would escape the configured base directory. The
+// name becomes a path segment appended to base_path, so an attacker-controlled
+// name such as "../../etc/passwd" or "/etc/passwd" must not be able to reach
+// outside the base. We reject, portably (no realpath), any name that is an
+// absolute path, contains a ".." path component (under either separator), or
+// embeds a NUL (which fopen would silently truncate at, opening a path other
+// than the one we validated).
+static bool partial_key_is_safe(struct handlebars_string * key)
+{
+    const char * val = hbs_str_val(key);
+    size_t len = hbs_str_len(key);
+    size_t i;
+    size_t seg_start = 0;
+
+    if (strlen(val) != len) {
+        return false;
+    }
+
+    if (len > 0 && (val[0] == '/' || val[0] == '\\')) {
+        return false;
+    }
+
+    for (i = 0; i <= len; i++) {
+        if (i == len || val[i] == '/' || val[i] == '\\') {
+            size_t seg_len = i - seg_start;
+            if (seg_len == 2 && val[seg_start] == '.' && val[seg_start + 1] == '.') {
+                return false;
+            }
+            seg_start = i + 1;
+        }
+    }
+
+    return true;
+}
+
 static struct handlebars_value * hbs_partial_loader_map_find(struct handlebars_value * value, struct handlebars_string * key, struct handlebars_value * rv)
 {
     struct handlebars_partial_loader * intern = GET_INTERN_V(value);
@@ -88,6 +123,10 @@ static struct handlebars_value * hbs_partial_loader_map_find(struct handlebars_v
     if (retval) {
         handlebars_value_value(rv, retval);
         return rv;
+    }
+
+    if (!partial_key_is_safe(key)) {
+        handlebars_throw(intern->user.ctx, HANDLEBARS_ERROR, "Invalid partial name: %.*s", (int) hbs_str_len(key), hbs_str_val(key));
     }
 
     struct handlebars_string *filename = handlebars_string_copy_ctor(intern->user.ctx, intern->base_path);
@@ -109,11 +148,24 @@ static struct handlebars_value * hbs_partial_loader_map_find(struct handlebars_v
     size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
+    if (size < 0) {
+        fclose(f);
+        handlebars_throw(intern->user.ctx, HANDLEBARS_ERROR, "Failed to determine size of partial: %.*s", (int) hbs_str_len(filename), hbs_str_val(filename));
+    }
+
     char * buf = handlebars_talloc_array(intern->user.ctx, char, size + 1);
-    size_t read = fread(buf, size, 1, f);
+    if (unlikely(buf == NULL)) {
+        fclose(f);
+    }
+    HANDLEBARS_MEMCHECK(buf, intern->user.ctx);
+
+    // An empty partial file is valid and renders as an empty string; only a
+    // short read of a non-empty file is an error. (fread returns 0 when the
+    // element size is 0, so guard on size to avoid mistaking empty for failure.)
+    size_t read = size > 0 ? fread(buf, (size_t) size, 1, f) : 0;
     fclose(f);
 
-    if (!read) {
+    if (size > 0 && read != 1) {
         handlebars_throw(intern->user.ctx, HANDLEBARS_ERROR, "Failed to read partial: %.*s", (int) hbs_str_len(filename), hbs_str_val(filename));
     }
 

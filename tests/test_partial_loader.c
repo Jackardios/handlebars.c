@@ -113,6 +113,52 @@ static struct handlebars_string * execute_template(const char *template)
     return retval;
 }
 
+// Like execute_template but without the fixture1-specific assertions, so it can
+// be used with other partials (empty file, traversal attempt). Any error during
+// execution propagates via the caller's setjmp.
+static struct handlebars_string * execute_template_raw(const char *template)
+{
+    struct handlebars_string *retval = NULL;
+    struct handlebars_module * module;
+
+    struct handlebars_ast_node * ast = handlebars_parse_ex(parser, handlebars_string_ctor(HBSCTX(parser), template, strlen(template)), 0);
+    struct handlebars_program * program = handlebars_compiler_compile_ex(compiler, ast);
+    module = handlebars_program_serialize(context, program);
+
+    HANDLEBARS_VALUE_DECL(helpers);
+    handlebars_value_map(helpers, handlebars_map_ctor(HBSCTX(vm), 0));
+    handlebars_vm_set_helpers(vm, helpers);
+
+    char * top_srcdir = getenv("top_srcdir");
+    struct handlebars_string * path;
+    if (NULL != top_srcdir) {
+        path = handlebars_string_asprintf(HBSCTX(vm), "%s/tests", top_srcdir);
+    } else {
+        path = handlebars_string_ctor(HBSCTX(vm), HBS_STRL("."));
+    }
+    HANDLEBARS_VALUE_DECL(partials);
+    handlebars_vm_set_partials(
+        vm,
+        handlebars_value_partial_loader_init(HBSCTX(vm),
+            path,
+            handlebars_string_ctor(HBSCTX(vm), HBS_STRL(".hbs")),
+            partials)
+    );
+
+    HANDLEBARS_VALUE_DECL(input);
+    handlebars_value_init_json_string(context, input, "{\"foo\":\"bar\"}");
+    handlebars_value_convert(input);
+
+    struct handlebars_string * buffer = handlebars_vm_execute(vm, module, input);
+    retval = talloc_steal(NULL, buffer);
+
+    HANDLEBARS_VALUE_UNDECL(partials);
+    HANDLEBARS_VALUE_UNDECL(input);
+    HANDLEBARS_VALUE_UNDECL(helpers);
+
+    return retval;
+}
+
 START_TEST(test_partial_loader_1)
 {
     struct handlebars_string *rv = execute_template("{{> fixture1 .}}");
@@ -144,7 +190,21 @@ START_TEST(test_partial_loader_error)
 }
 END_TEST
 
-START_TEST(test_partial_loader_empty_error)
+// Regression (D1): an empty partial file (fixture4.hbs is 0 bytes) used to be
+// reported as a read failure, because fread returns 0 when the element size is
+// 0. An empty partial is valid and must render as an empty string.
+START_TEST(test_partial_loader_empty)
+{
+    struct handlebars_string *rv = execute_template_raw("{{> fixture4}}");
+    ck_assert_hbs_str_eq_cstr(rv, "");
+    talloc_free(rv);
+}
+END_TEST
+
+// Regression (D1): a partial name is appended to the loader's base directory,
+// so a name containing ".." must not be able to read files outside it. The
+// loader now rejects such names with a clean error instead of opening the file.
+START_TEST(test_partial_loader_traversal)
 {
     jmp_buf buf;
 
@@ -154,8 +214,8 @@ START_TEST(test_partial_loader_empty_error)
         return;
     }
 
-    (void) execute_template("{{> fixture4}}");
-    ck_assert(0);
+    (void) execute_template_raw("{{> ../fixture1}}");
+    ck_abort_msg("Expected a path-traversal error for a partial name containing '..'");
 }
 END_TEST
 
@@ -208,7 +268,8 @@ static Suite * suite(void)
 	REGISTER_TEST_FIXTURE(s, test_partial_loader_1, "Partial loader 1");
 	REGISTER_TEST_FIXTURE(s, test_partial_loader_2, "Partial loader 2");
 	REGISTER_TEST_FIXTURE(s, test_partial_loader_error, "Partial loader error");
-	REGISTER_TEST_FIXTURE(s, test_partial_loader_empty_error, "Partial loader empty error");
+	REGISTER_TEST_FIXTURE(s, test_partial_loader_empty, "Partial loader empty renders empty");
+	REGISTER_TEST_FIXTURE(s, test_partial_loader_traversal, "Partial loader rejects path traversal");
 	REGISTER_TEST_FIXTURE(s, test_recursive_partial, "Recursive partial is bounded");
 
     return s;

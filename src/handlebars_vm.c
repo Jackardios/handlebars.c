@@ -725,6 +725,9 @@ ACCEPT_FUNCTION(invoke_helper)
     assert(opcode->op2.type == handlebars_operand_type_string);
     assert(opcode->op3.type == handlebars_operand_type_boolean);
 
+    if (unlikely(opcode->op1.data.longval < 0 || opcode->op1.data.longval > HANDLEBARS_VM_MAX_ARGC)) {
+        handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Invalid helper argument count: %ld", opcode->op1.data.longval);
+    }
     int argc = (int) opcode->op1.data.longval;
     VM_SETUP_OPTIONS(argc);
     options.name = opcode->op2.data.string.string;
@@ -755,6 +758,9 @@ ACCEPT_FUNCTION(invoke_known_helper)
     assert(opcode->op1.type == handlebars_operand_type_long);
     assert(opcode->op2.type == handlebars_operand_type_string);
 
+    if (unlikely(opcode->op1.data.longval < 0 || opcode->op1.data.longval > HANDLEBARS_VM_MAX_ARGC)) {
+        handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Invalid helper argument count: %ld", opcode->op1.data.longval);
+    }
     int argc = (int) opcode->op1.data.longval;
     VM_SETUP_OPTIONS(argc);
     options.name = opcode->op2.data.string.string;

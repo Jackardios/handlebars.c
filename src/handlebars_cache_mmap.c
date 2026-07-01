@@ -320,6 +320,16 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
         handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Shared memory pointer mismatch: %p != %p", module, module->addr);
     }
 
+    // Structurally validate the entry against the space remaining in the data
+    // segment, in case the shared region was corrupted or tampered with. A bad
+    // entry is treated as a miss rather than crashing the reader.
+    if( unlikely(!handlebars_module_validate(module,
+            (size_t) (((char *) intern->data + intern->data_length) - (char *) module), NULL)) ) {
+        INCR(intern->misses);
+        module = NULL;
+        goto error;
+    }
+
     INCR(intern->hits);
     INCR(intern->refcount);
 

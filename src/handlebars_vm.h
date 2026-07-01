@@ -38,6 +38,14 @@ struct handlebars_vm;
 #define HANDLEBARS_VM_MAX_DEPTH 1024
 #endif
 
+// Upper bound on a helper's argument count. The count comes from an opcode
+// operand and drives a stack alloca, so a corrupt/malicious module must not be
+// able to request an unbounded (or negative) allocation. Far above any real
+// template's argument count.
+#ifndef HANDLEBARS_VM_MAX_ARGC
+#define HANDLEBARS_VM_MAX_ARGC 1024
+#endif
+
 #ifndef HANDLEBARS_VM_BUFFER_INIT_SIZE
 #define HANDLEBARS_VM_BUFFER_INIT_SIZE 128
 #endif

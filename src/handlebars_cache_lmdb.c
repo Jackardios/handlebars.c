@@ -171,6 +171,14 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
     }
 #endif
 
+    // Structurally validate against the actual stored size before trusting
+    // module->size (used by the memcpy below) or any interior offsets. A corrupt
+    // or malicious entry is treated as a miss rather than crashing.
+    if (!handlebars_module_validate(module, data.mv_size, NULL)) {
+        intern->stat.misses++;
+        goto error;
+    }
+
     // Check if it's too old
     if (cache->max_age >= 0 && difftime(now, module->ts) >= cache->max_age) {
         intern->stat.misses++;

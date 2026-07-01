@@ -440,3 +440,187 @@ bool handlebars_module_verify(
     }
     return matched;
 }
+
+// Checks that `ptr` — a not-yet-patched pointer stored relative to
+// module->addr — resolves to a byte offset within [min_offset, size] that has
+// room for `span` more bytes. All arithmetic is overflow-safe. On success the
+// resolved offset is written to *out_offset.
+static bool module_offset_ok(
+    const struct handlebars_module * module,
+    const void * ptr,
+    size_t min_offset,
+    size_t span,
+    size_t * out_offset
+) {
+    uintptr_t base = (uintptr_t) module->addr;
+    uintptr_t p = (uintptr_t) ptr;
+    size_t offset;
+
+    if (p < base) {
+        return false;
+    }
+    offset = (size_t) (p - base);
+    if (offset < min_offset || offset > module->size) {
+        return false;
+    }
+    if (span > module->size - offset) {
+        return false;
+    }
+    if (out_offset != NULL) {
+        *out_offset = offset;
+    }
+    return true;
+}
+
+// Validates that an operand string pointer lands within the data region with
+// room for the whole string (header + contents).
+static bool module_validate_string(
+    const struct handlebars_module * module,
+    struct handlebars_string * str,
+    size_t data_start
+) {
+    size_t offset;
+    struct handlebars_string * real;
+    size_t len;
+
+    // First ensure there is room for the string header so reading its length is safe
+    if (!module_offset_ok(module, str, data_start, HANDLEBARS_STRING_SIZE, &offset)) {
+        return false;
+    }
+    real = (struct handlebars_string *) ((char *) module + offset);
+    len = hbs_str_len(real);
+    // Then ensure the declared contents fit as well
+    if (HBS_STR_SIZE(len) > module->size - offset) {
+        return false;
+    }
+    return true;
+}
+
+static bool module_validate_operand(
+    const struct handlebars_module * module,
+    const struct handlebars_operand * operand,
+    size_t data_start
+) {
+    size_t i;
+    size_t offset;
+    size_t count;
+    struct handlebars_operand_string * arr;
+
+    switch (operand->type) {
+        case handlebars_operand_type_string:
+            return module_validate_string(module, operand->data.string.string, data_start);
+        case handlebars_operand_type_array:
+            count = operand->data.array.count;
+            // Overflow-safe bound on the array-of-strings block
+            if (count > (module->size - data_start) / sizeof(struct handlebars_operand_string)) {
+                return false;
+            }
+            if (!module_offset_ok(module, operand->data.array.array, data_start,
+                    count * sizeof(struct handlebars_operand_string), &offset)) {
+                return false;
+            }
+            arr = (struct handlebars_operand_string *) ((char *) module + offset);
+            for (i = 0; i < count; i++) {
+                if (!module_validate_string(module, arr[i].string, data_start)) {
+                    return false;
+                }
+            }
+            return true;
+        default:
+            return true;
+    }
+}
+
+bool handlebars_module_validate(
+    struct handlebars_module * module,
+    size_t actual_size,
+    struct handlebars_context * ctx
+) {
+    const size_t header_size = sizeof(struct handlebars_module);
+    const size_t entry_size = sizeof(struct handlebars_module_table_entry);
+    const size_t opcode_size = sizeof(struct handlebars_opcode);
+    size_t data_size;
+    size_t programs_bytes;
+    size_t opcodes_bytes;
+    size_t opcodes_end;
+    size_t off;
+    size_t i;
+    struct handlebars_module_table_entry * programs;
+    struct handlebars_opcode * opcodes;
+
+#define FAIL(...) do { \
+        if (ctx != NULL) { handlebars_throw(ctx, HANDLEBARS_ERROR, __VA_ARGS__); } \
+        return false; \
+    } while (0)
+
+    // The fixed header (through data_offset) must be present before we trust any
+    // size field inside it.
+    if (actual_size < header_size) {
+        FAIL("Invalid module: buffer smaller than header (%zu < %zu)", actual_size, header_size);
+    }
+    if (memcmp(module->header, "HBSCM", sizeof("HBSCM")) != 0) {
+        FAIL("Invalid module: bad magic");
+    }
+    if (module->version != handlebars_version()) {
+        FAIL("Invalid module version expected=%d actual=%d", module->version, handlebars_version());
+    }
+    // The declared size must be at least the header and must fit within the
+    // backing buffer. It may be smaller than actual_size for a backend that
+    // embeds the module in a larger region (mmap); all interior bounds below are
+    // checked against module->size, so reads stay within the buffer either way.
+    if (module->size < header_size) {
+        FAIL("Invalid module: declared size %zu smaller than header %zu", module->size, header_size);
+    }
+    if (module->size > actual_size) {
+        FAIL("Invalid module: declared size %zu exceeds buffer size %zu", module->size, actual_size);
+    }
+
+    data_size = module->size - header_size;
+
+    // Counts must be small enough that their arrays fit contiguously; the
+    // divisions keep the multiplications from overflowing.
+    if (module->program_count > data_size / entry_size) {
+        FAIL("Invalid module: program_count %zu out of range", module->program_count);
+    }
+    programs_bytes = module->program_count * entry_size;
+    if (module->opcode_count > (data_size - programs_bytes) / opcode_size) {
+        FAIL("Invalid module: opcode_count %zu out of range", module->opcode_count);
+    }
+    opcodes_bytes = module->opcode_count * opcode_size;
+    opcodes_end = header_size + programs_bytes + opcodes_bytes;
+
+    // The two arrays must sit at exactly the offsets the serializer writes.
+    if (!module_offset_ok(module, module->programs, header_size, programs_bytes, &off) || off != header_size) {
+        FAIL("Invalid module: programs array out of range");
+    }
+    if (!module_offset_ok(module, module->opcodes, header_size + programs_bytes, opcodes_bytes, &off)
+            || off != header_size + programs_bytes) {
+        FAIL("Invalid module: opcodes array out of range");
+    }
+
+    programs = (struct handlebars_module_table_entry *) ((char *) module + header_size);
+    opcodes = (struct handlebars_opcode *) ((char *) module + header_size + programs_bytes);
+
+    // Each program's opcode window must lie within the opcode array.
+    for (i = 0; i < module->program_count; i++) {
+        if (programs[i].opcode_offset > module->opcode_count) {
+            FAIL("Invalid module: program %zu opcode_offset out of range", i);
+        }
+        if (programs[i].opcode_count > module->opcode_count - programs[i].opcode_offset) {
+            FAIL("Invalid module: program %zu opcode_count out of range", i);
+        }
+    }
+
+    // Every string/array operand must point inside the data region.
+    for (i = 0; i < module->opcode_count; i++) {
+        if (!module_validate_operand(module, &opcodes[i].op1, opcodes_end) ||
+            !module_validate_operand(module, &opcodes[i].op2, opcodes_end) ||
+            !module_validate_operand(module, &opcodes[i].op3, opcodes_end) ||
+            !module_validate_operand(module, &opcodes[i].op4, opcodes_end)) {
+            FAIL("Invalid module: opcode %zu operand out of range", i);
+        }
+    }
+
+#undef FAIL
+    return true;
+}

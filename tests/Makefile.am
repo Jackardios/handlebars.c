@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-EXTRA_DIST = utils.h fixture1.hbs fixture1.json fixture1.yaml fixture2.hbs fixture3.hbs test_executable.bats
+EXTRA_DIST = utils.h fixture1.hbs fixture1.json fixture1.yaml fixture2.hbs fixture3.hbs fixture4.hbs test_executable.bats
 AM_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) -I$(top_builddir)/src -I$(top_srcdir)/src
 AM_CFLAGS = $(WARN_CFLAGS) $(HARDENING_BIN_CFLAGS) $(CODE_COVERAGE_CFLAGS) $(JSON_CFLAGS) $(LMDB_CFLAGS) $(PTHREAD_CFLAGS) $(TALLOC_CFLAGS) $(YAML_CFLAGS) $(CHECK_CFLAGS) $(PCRE_CFLAGS) $(SUBUNIT_CFLAGS)
 AM_LDFLAGS = $(WARN_LDFLAGS) $(HARDENING_BIN_LDFLAGS) $(CODE_COVERAGE_LIBS) -static # for valgrind
@@ -32,6 +32,7 @@ check_PROGRAMS = \
 	test_ast_list \
 	test_compiler \
 	test_map \
+	test_module_validate \
 	test_opcode_printer \
 	test_opcodes \
 	test_parser_errors \
@@ -47,6 +48,7 @@ test_ast_SOURCES = $(COMMONFILES) test_ast.c
 test_ast_list_SOURCES = $(COMMONFILES) test_ast_list.c
 test_compiler_SOURCES = $(COMMONFILES) test_compiler.c
 test_map_SOURCES = $(COMMONFILES) test_map.c
+test_module_validate_SOURCES = $(COMMONFILES) test_module_validate.c
 test_opcode_printer_SOURCES = $(COMMONFILES) test_opcode_printer.c
 test_opcodes_SOURCES = $(COMMONFILES) test_opcodes.c
 test_parser_errors_SOURCES = $(COMMONFILES) test_parser_errors.c
