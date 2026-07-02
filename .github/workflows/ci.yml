@@ -17,8 +17,8 @@ jobs:
             fail-fast: false
             matrix:
                 DISTRO:
-                    - "ubuntu-20.04"
                     - "ubuntu-22.04"
+                    - "ubuntu-24.04"
                     - "ubuntu-latest"
                 CC:
                     - "gcc"
@@ -54,8 +54,8 @@ jobs:
             fail-fast: false
             matrix:
                 DISTRO:
-                    - "ubuntu-20.04"
                     - "ubuntu-22.04"
+                    - "ubuntu-24.04"
                     - "ubuntu-latest"
                 CC:
                     - "gcc"
@@ -78,7 +78,7 @@ jobs:
             - run: make code-coverage-capture
             - name: Coveralls
               #   if: ${{ matrix.COVERAGE == 'true' }}
-              uses: coverallsapp/github-action@master
+              uses: coverallsapp/github-action@v2
               with:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   path-to-lcov: ./handlebars-coverage.info
@@ -97,7 +97,7 @@ jobs:
             fail-fast: false
             matrix:
                 DISTRO:
-                    - "ubuntu-20.04"
+                    - "ubuntu-24.04"
         steps:
             - uses: actions/checkout@v4
               with:
@@ -123,6 +123,46 @@ jobs:
               with:
                   name: scan-build
                   path: scan-build
+
+    linux_sanitizers:
+        runs-on: ${{ matrix.DISTRO }}
+        strategy:
+            fail-fast: false
+            matrix:
+                DISTRO:
+                    - "ubuntu-24.04"
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+            - name: Install packages
+              run: sudo apt-get install -y autotools-dev autoconf automake bats libtool m4 make pkg-config check libpcre3-dev libtalloc-dev libsubunit-dev lcov libjson-c-dev liblmdb-dev libyaml-dev gcc
+            - run: autoreconf -i
+            - name: configure (AddressSanitizer + UndefinedBehaviorSanitizer)
+              run: ./configure --disable-Werror
+              env:
+                  CFLAGS: "-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 -Wno-deprecated-declarations -Wno-error=deprecated-declarations"
+                  LDFLAGS: "-fsanitize=address,undefined"
+            # The test suite links with -static for valgrind, which is incompatible
+            # with the ASan runtime; drop it for this job only.
+            - name: drop -static for the sanitizer runtime
+              run: sed -i 's/ -static # for valgrind/ # for valgrind/' tests/Makefile
+            - run: make
+            - name: make check (sanitizers)
+              run: make check
+              env:
+                  # talloc pools trip the leak detector under check's fork mode;
+                  # the suite has its own talloc leak guard, so disable ASan LSan.
+                  ASAN_OPTIONS: "detect_leaks=0:abort_on_error=1:halt_on_error=1"
+                  UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+            - name: dump logs
+              if: ${{ failure() }}
+              run: |
+                  for i in `find tests -name "*.log" 2>/dev/null`; do
+                      echo "-- START ${i}";
+                      cat "${i}";
+                      echo "-- END";
+                  done
 
     build_osx_autotools_default_args:
         runs-on: macos-latest

@@ -16,7 +16,7 @@ test: build
 
 # Запуск тестов с valgrind
 valgrind: build
-	$(DOCKER) run --rm $(IMAGE_NAME) make valgrind-check
+	$(DOCKER) run --rm $(IMAGE_NAME) make check-valgrind
 
 # Интерактивный режим
 shell: build

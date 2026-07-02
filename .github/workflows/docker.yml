@@ -61,7 +61,7 @@ jobs:
               with:
                   file: .github/debian.Dockerfile
                   push: true
-                  tags: "jbboehr/handlebars.c:alpine"
+                  tags: "jbboehr/handlebars.c:debian"
 
     publish_debian_gh_pkg:
         runs-on: ubuntu-latest

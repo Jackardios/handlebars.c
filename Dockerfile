@@ -14,7 +14,6 @@ RUN apt-get update && apt-get install -y \
     gperf \
     check \
     libtalloc-dev \
-    libpcre2-dev \
     libpcre3-dev \
     libjson-c-dev \
     libyaml-dev \
@@ -30,7 +29,7 @@ COPY . .
 
 # Сборка проекта
 RUN autoreconf -i \
-    && ./configure --disable-Werror \
+    && ./configure --disable-Werror --enable-valgrind \
     && make
 
 # По умолчанию запускаем тесты
