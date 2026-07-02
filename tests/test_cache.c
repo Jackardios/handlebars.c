@@ -100,9 +100,17 @@ START_TEST(test_cache_gc_entries)
 
     ck_assert_uint_eq(handlebars_cache_stat(cache).current_entries, 1);
     ck_assert_uint_eq(handlebars_cache_stat(cache).current_size, expected_size);
+
+    // ctx1/ctx2 were evicted by GC. Their key strings were solely owned by the
+    // cache map (the cache addrefs the key on add; handlebars_string_ctor starts
+    // at refcount 0), so eviction freed them and ctx1->tmpl / ctx2->tmpl now
+    // dangle. Look the evicted entries up with fresh strings instead of the
+    // dangling pointers. ctx0 was kept, so its key is still alive.
+    struct handlebars_string * probe1 = handlebars_string_ctor(context, tmpls[1], strlen(tmpls[1]));
+    struct handlebars_string * probe2 = handlebars_string_ctor(context, tmpls[2], strlen(tmpls[2]));
     ck_assert_ptr_ne(NULL, handlebars_cache_find(cache, ctx0->tmpl));
-    ck_assert_ptr_eq(NULL, handlebars_cache_find(cache, ctx1->tmpl));
-    ck_assert_ptr_eq(NULL, handlebars_cache_find(cache, ctx2->tmpl));
+    ck_assert_ptr_eq(NULL, handlebars_cache_find(cache, probe1));
+    ck_assert_ptr_eq(NULL, handlebars_cache_find(cache, probe2));
 }
 END_TEST
 

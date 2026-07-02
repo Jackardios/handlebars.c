@@ -49,6 +49,12 @@
 
 
 
+struct handlebars_map_entry {
+    struct handlebars_string * key;
+    struct handlebars_value value;
+    uint32_t table_offset;
+};
+
 struct handlebars_map {
     struct handlebars_context * ctx;
 #ifndef HANDLEBARS_NO_REFCOUNT
@@ -62,13 +68,12 @@ struct handlebars_map {
 
     bool is_in_iteration;
 
-    char data[];
-};
-
-struct handlebars_map_entry {
-    struct handlebars_string * key;
-    struct handlebars_value value;
-    uint32_t table_offset;
+    // The map_entry vector and the pointer table are packed into this trailing
+    // buffer (see map_vec() / map_table()). Both hold types with pointer
+    // members, so the buffer must begin at the alignment of a map entry;
+    // otherwise every access through it is misaligned - undefined behavior
+    // that UBSan flags and that faults on strict-alignment targets.
+    char data[] __attribute__((aligned(__alignof__(struct handlebars_map_entry))));
 };
 
 struct ht_find_result {
