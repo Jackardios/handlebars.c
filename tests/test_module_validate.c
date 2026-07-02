@@ -105,12 +105,42 @@ START_TEST(test_module_validate_rejects_corruption)
 }
 END_TEST
 
+// D#4: the VM dispatch loop steps opcode-by-opcode until it hits a return, so a
+// program window that is empty or whose last opcode is not a return would read
+// opcodes past the array out of bounds. Validation must reject both.
+START_TEST(test_module_validate_requires_return_terminator)
+{
+    struct handlebars_module * m = make_module("{{foo}} {{#bar}}{{baz}}{{/bar}}");
+    size_t good_size = m->size;
+
+    ck_assert(handlebars_module_validate(m, good_size, NULL));
+    ck_assert(m->program_count > 0);
+
+    // The serializer ends every program with a return opcode; flip the last
+    // opcode of program 0 to something else and it must be rejected.
+    size_t last = m->programs[0].opcode_offset + m->programs[0].opcode_count - 1;
+    ck_assert_int_eq(m->opcodes[last].type, handlebars_opcode_type_return);
+    m->opcodes[last].type = handlebars_opcode_type_append;
+    ck_assert(!handlebars_module_validate(m, good_size, NULL));
+    m->opcodes[last].type = handlebars_opcode_type_return;
+    ck_assert(handlebars_module_validate(m, good_size, NULL));
+
+    // An empty program window (no opcodes at all) must also be rejected.
+    size_t oc = m->programs[0].opcode_count;
+    m->programs[0].opcode_count = 0;
+    ck_assert(!handlebars_module_validate(m, good_size, NULL));
+    m->programs[0].opcode_count = oc;
+    ck_assert(handlebars_module_validate(m, good_size, NULL));
+}
+END_TEST
+
 static Suite * suite(void);
 static Suite * suite(void)
 {
     Suite * s = suite_create("Module Validate");
     REGISTER_TEST_FIXTURE(s, test_module_validate_accepts_valid, "Valid module is accepted");
     REGISTER_TEST_FIXTURE(s, test_module_validate_rejects_corruption, "Corrupt module is rejected");
+    REGISTER_TEST_FIXTURE(s, test_module_validate_requires_return_terminator, "Program must end with a return opcode");
     return s;
 }
 

@@ -482,6 +482,7 @@ static bool module_validate_string(
     size_t offset;
     struct handlebars_string * real;
     size_t len;
+    size_t body_room;
 
     // First ensure there is room for the string header so reading its length is safe
     if (!module_offset_ok(module, str, data_start, HANDLEBARS_STRING_SIZE, &offset)) {
@@ -489,8 +490,14 @@ static bool module_validate_string(
     }
     real = (struct handlebars_string *) ((char *) module + offset);
     len = hbs_str_len(real);
-    // Then ensure the declared contents fit as well
-    if (HBS_STR_SIZE(len) > module->size - offset) {
+    // Then ensure the declared contents fit as well. module_offset_ok already
+    // guaranteed HANDLEBARS_STRING_SIZE bytes of header, so body_room cannot
+    // underflow; comparing len against it (rather than computing HBS_STR_SIZE(len),
+    // which would overflow for an attacker-supplied len near SIZE_MAX) is
+    // overflow-safe. Need HANDLEBARS_STRING_SIZE + len + 1 <= module->size - offset,
+    // i.e. len + 1 <= body_room, i.e. len < body_room.
+    body_room = (module->size - offset) - HANDLEBARS_STRING_SIZE;
+    if (len >= body_room) {
         return false;
     }
     return true;
@@ -608,6 +615,18 @@ bool handlebars_module_validate(
         }
         if (programs[i].opcode_count > module->opcode_count - programs[i].opcode_offset) {
             FAIL("Invalid module: program %zu opcode_count out of range", i);
+        }
+        // The VM dispatch loop starts at opcode_offset and steps opcode-by-opcode
+        // until it hits a return. A program that is empty or does not end with a
+        // return would therefore read opcodes past its window - and ultimately
+        // past the opcode array - out of bounds. The serializer always emits a
+        // trailing return, so require one here.
+        if (programs[i].opcode_count < 1) {
+            FAIL("Invalid module: program %zu has no opcodes", i);
+        }
+        if (opcodes[programs[i].opcode_offset + programs[i].opcode_count - 1].type
+                != handlebars_opcode_type_return) {
+            FAIL("Invalid module: program %zu does not end with a return opcode", i);
         }
     }
 

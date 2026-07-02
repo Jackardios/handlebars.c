@@ -160,6 +160,16 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
 
     module = ((struct handlebars_module *) data.mv_data);
 
+    // Structurally validate against the actual stored size FIRST, before trusting
+    // module->size for anything else. handlebars_module_verify() hashes
+    // module->size bytes (calculate_hash), so a corrupt/malicious module->size
+    // larger than the stored blob would drive an out-of-bounds read there if we
+    // verified first. A corrupt or malicious entry is treated as a miss.
+    if (!handlebars_module_validate(module, data.mv_size, NULL)) {
+        intern->stat.misses++;
+        goto error;
+    }
+
 #if defined(HANDLEBARS_ENABLE_DEBUG)
     // In debug mode, throw
     handlebars_module_verify(module, CONTEXT);
@@ -170,14 +180,6 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
         goto error;
     }
 #endif
-
-    // Structurally validate against the actual stored size before trusting
-    // module->size (used by the memcpy below) or any interior offsets. A corrupt
-    // or malicious entry is treated as a miss rather than crashing.
-    if (!handlebars_module_validate(module, data.mv_size, NULL)) {
-        intern->stat.misses++;
-        goto error;
-    }
 
     // Check if it's too old
     if (cache->max_age >= 0 && difftime(now, module->ts) >= cache->max_age) {

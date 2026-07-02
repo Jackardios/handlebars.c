@@ -943,6 +943,13 @@ ACCEPT_FUNCTION(lookup_block_param)
     assert(opcode->op1.type == handlebars_operand_type_array);
     assert(opcode->op2.type == handlebars_operand_type_array);
 
+    // op1 carries the two block-param indices; a corrupt/untrusted module could
+    // declare a shorter array, so guard the two fixed reads below (the assert is a
+    // no-op in release builds and only checks the operand type, not its length).
+    if( opcode->op1.data.array.count < 2 ) {
+        handlebars_throw(CONTEXT, HANDLEBARS_ERROR, "Invalid lookup_block_param opcode: expected two block-param indices");
+    }
+
     sscanf(hbs_str_val(opcode->op1.data.array.array[0].string), "%ld", &blockParam1);
     sscanf(hbs_str_val(opcode->op1.data.array.array[1].string), "%ld", &blockParam2);
 
@@ -1429,13 +1436,17 @@ struct handlebars_string * handlebars_vm_execute_ex(
 
     struct handlebars_string * buffer = NULL;
     bool volatile setup_stacks = false;
+    int volatile caught = 0;
     jmp_buf buf;
 
-    // Save jump buffer
-    if( !prev ) {
-        if( handlebars_setjmp_ex(vm, &buf) ) {
-            goto done;
-        }
+    // Always install our own jump buffer. A throw must unwind THIS frame's saved
+    // state - in particular the delimiter references taken above - before it
+    // propagates outward. Without a local setjmp on the nested path (prev != NULL)
+    // a throw would longjmp straight past the restore block below, leaking those
+    // references and leaving vm->module/flags pointing at the nested execution.
+    caught = handlebars_setjmp_ex(vm, &buf);
+    if( caught ) {
+        goto done;
     }
 
     // Setup stacks
@@ -1484,6 +1495,16 @@ done:
     vm->last_context = prev_last_context;
     vm->module = prev_module;
     vm->flags = prev_flags;
+
+    // If we caught a throw and an outer handler is installed, re-propagate it now
+    // that this frame's saved state has been restored (in particular the alloca'd
+    // stacks are detached and the delimiter references released). The error
+    // number/message remain set on the context. When there is no outer handler
+    // (prev == NULL) we swallow it and return NULL, matching the historical
+    // top-level behaviour and avoiding a longjmp to a NULL jmp_buf.
+    if( caught && prev != NULL ) {
+        longjmp(*prev, caught);
+    }
 
     return buffer;
 }

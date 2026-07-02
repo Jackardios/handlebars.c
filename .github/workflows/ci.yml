@@ -151,10 +151,26 @@ jobs:
             - name: make check (sanitizers)
               run: make check
               env:
-                  # talloc pools trip the leak detector under check's fork mode;
-                  # the suite has its own talloc leak guard, so disable ASan LSan.
-                  ASAN_OPTIONS: "detect_leaks=0:abort_on_error=1:halt_on_error=1"
-                  UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+                  # Write sanitizer reports to files and keep going rather than
+                  # aborting: halt_on_error=1 tears down check's fork runner on the
+                  # first report and surfaces as spurious spec-test failures. The
+                  # separate step below fails the job if any report was written.
+                  # detect_leaks=0 because talloc pools trip LSan under check's
+                  # fork mode; the suite has its own talloc leak guard.
+                  ASAN_OPTIONS: "detect_leaks=0:halt_on_error=0:log_path=/tmp/sanitizer"
+                  UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=0:log_path=/tmp/sanitizer"
+            - name: check for sanitizer reports
+              run: |
+                  if ls /tmp/sanitizer.* >/dev/null 2>&1; then
+                      echo "Sanitizer reported issues:"
+                      for f in /tmp/sanitizer.*; do
+                          echo "-- START ${f}";
+                          cat "${f}";
+                          echo "-- END";
+                      done
+                      exit 1
+                  fi
+                  echo "No sanitizer reports found."
             - name: dump logs
               if: ${{ failure() }}
               run: |

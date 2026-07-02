@@ -62,9 +62,16 @@
 #ifdef HAVE_ATOMIC_BUILTINS
 #define INCR(var) __atomic_add_fetch(&var, 1, __ATOMIC_SEQ_CST)
 #define DECR(var) __atomic_sub_fetch(&var, 1, __ATOMIC_SEQ_CST)
+// in_reset participates in a SEQ_CST handshake with refcount (a reset publishes
+// in_reset then reads refcount; a reader bumps refcount then reads in_reset), so
+// it must be accessed atomically for at least one side to observe the other.
+#define STORE_BOOL(var, val) __atomic_store_n(&(var), (val), __ATOMIC_SEQ_CST)
+#define LOAD_BOOL(var) __atomic_load_n(&(var), __ATOMIC_SEQ_CST)
 #else
 #define INCR(var) lock(cache); var++; unlock(cache)
 #define DECR(var) lock(cache); var--; unlock(cache)
+#define STORE_BOOL(var, val) (var) = (val)
+#define LOAD_BOOL(var) (var)
 #endif
 
 
@@ -244,7 +251,7 @@ static void cache_reset(struct handlebars_cache * cache)
     struct handlebars_cache_mmap * intern = (struct handlebars_cache_mmap *) cache->internal;
 
     // Lock
-    intern->in_reset = true;
+    STORE_BOOL(intern->in_reset, true);
 
     // Try to wait for refcount to empty
 #ifdef HAVE_ATOMIC_BUILTINS
@@ -278,7 +285,7 @@ static void cache_reset(struct handlebars_cache * cache)
 
 error:
     // Unlock
-    intern->in_reset = false;
+    STORE_BOOL(intern->in_reset, false);
 }
 
 static int cache_gc(struct handlebars_cache * cache)
@@ -294,7 +301,7 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
     time_t now;
 
     // Currently resetting
-    if( intern->in_reset ) {
+    if( LOAD_BOOL(intern->in_reset) ) {
         return NULL;
     }
 
@@ -322,7 +329,7 @@ static struct handlebars_module * cache_find(struct handlebars_cache * cache, st
     // segment while we read it. Then re-check in_reset to close the window
     // between the top-of-function check and this increment.
     INCR(intern->refcount);
-    if( unlikely(intern->in_reset) ) {
+    if( unlikely(LOAD_BOOL(intern->in_reset)) ) {
         DECR(intern->refcount);
         return NULL;
     }
@@ -372,7 +379,7 @@ static void cache_add(
     struct table_entry entry;
 
     // Currently resetting
-    if( intern->in_reset ) {
+    if( LOAD_BOOL(intern->in_reset) ) {
         return;
     }
 
